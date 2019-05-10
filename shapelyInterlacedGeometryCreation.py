@@ -33,8 +33,8 @@ regions are identified as Undulation regions. The process of shifting the
 intersecting regions up a layer is the same as for intersections with other
 Tapes. 
 
-The 'leftover' regions of Tape that do not intersect with any other object 
-are placed in the lowest layer possible. 
+The parts of the tapes that are not within the intersection region are placed
+on the current layer. 
 
 '''
 
@@ -48,10 +48,10 @@ t = 0.2
 # define the centerpoint of the impact specimen
 centerpoint = Point(0.0,0.0)
 
-# 
+# defines the Tape class, which is a subclass of the Shapely Polygon class.
 class Tape(Polygon):
     _ids = count(0)  # counts the number of instances created
-    _instances = []
+    _instances = []  # initializes a list of Tape instances 
     def __init__(self, angle=0, coords=None , holes=None, layer=1, angleLabel=None):
         
         self.createObject(angle, coords, holes, layer, angleLabel)
@@ -108,6 +108,8 @@ class Tape(Polygon):
         else:
             self.angleLabel = angleLabel
 
+    # this class method is a generator function used to return the instances of
+    # class in a specific requested layer
     @classmethod
     def getinstances(cls, layer):
         dead = []
@@ -119,20 +121,28 @@ class Tape(Polygon):
                 dead.append(obj)
         cls._instances = [x for x in cls._instances if x not in dead]
 
-    @classmethod  # define method to create new instances of the same type as the current instance
+    # this class method is used to create new instances of whatever class it is
+    # called from
+    @classmethod  
     def newInstance(cls, tempCoords, tempLayer, tempAngleLabel):
         return cls(coords=tempCoords, layer=tempLayer, angleLabel=tempAngleLabel)
 
+    # this method checks whether the current object intersects with any of the
+    # objects in "objectList"
     def checkIntersect(self, objectList, buffer=True):
         differenceObj = None
         intersectCoords = []
         if objectList:
-            if buffer:
+            if buffer:  # applies negative buffer if requested
+                # note the objects in the objectList are merged before the 
+                # intersection check
                 mergedObj = cascaded_union(objectList).buffer(-1*10**-8)
             else:
                 mergedObj = cascaded_union(objectList)
             intersectObj = self.intersection(mergedObj)
             if intersectObj:
+                # different behaviour depending on whether the intersection
+                # creates multiple intersecting regions or only one
                 if intersectObj.geom_type == 'MultiPolygon':
                     for plygn in intersectObj:
                         intersectCoords.append(zip(plygn.exterior.xy[0], plygn.exterior.xy[1]))
@@ -146,6 +156,8 @@ class Tape(Polygon):
                     print 'Not a polygon or multipolygon'     
         return intersectCoords, differenceObj
 
+    # this method is used to define the coordinates of the objects
+    # "left behind" when the current object intersects with another object
     def splitObject(self, differenceObject):
         splitCoords = []
         if differenceObject:
@@ -163,6 +175,9 @@ class Tape(Polygon):
     def __str__(self):
         return 'Layer: {}, Number: {}'.format(self.layer, self.objNumber)               
 
+# the Resin class is a subclass of the Tape class. Aside from object creation, 
+# the class defines its own __init__ method as its intersection hebaviour is
+# different (resin intersecting tape -> no undulation). 
 class Resin(Tape):
     _ids = count(0)
     _instances = []
@@ -199,7 +214,9 @@ class Resin(Tape):
             else:
                 self._instances.append(self)
 
-
+# the Undulation class is a subclass of the Tape class. The Undulation class
+# defines its own __init__ method which defines how the undulation regions
+# are recorded.
 class Undulation(Tape):
     _ids = count(0)
     _instances = []

@@ -1,8 +1,6 @@
 from shapely.geometry import Polygon
 from shapely import affinity
 from shapely.geometry import Point
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import numpy as np
 from shapely.ops import cascaded_union
 from itertools import count
@@ -52,30 +50,46 @@ centerpoint = Point(0.0,0.0)
 class Tape(Polygon):
     _ids = count(0)  # counts the number of instances created
     _instances = []  # initializes a list of Tape instances 
-    def __init__(self, angle=0, coords=None , holes=None, layer=1, angleLabel=None):
+    def __init__(self, angle=0, coords=None , holes=None, layer=1,
+            angleLabel=None):
         
         self.createObject(angle, coords, holes, layer, angleLabel)
-        # first check intersection with own type e.g. for tapes check intersect with other tapes
-        intersectSelfCoordList, splitSelfObjList = self.checkIntersect(list(self.getinstances(self.layer)))
+        # first check intersection with own type e.g. for tapes check 
+        # intersect with other tapes
+        intersectSelfCoordList, splitSelfObjList = self.checkIntersect(
+                list(self.getinstances(self.layer)))
         if intersectSelfCoordList:
             for intersectSelfCoords in intersectSelfCoordList:
-                intersectSelfObj = self.newInstance(tempCoords=intersectSelfCoords, tempLayer=self.layer+1, tempAngleLabel=self.angle)
+                intersectSelfObj = self.newInstance(
+                        tempCoords=intersectSelfCoords, tempLayer=self.layer+1,
+                        tempAngleLabel=self.angle)
         
-        intersectOtherCoordList, splitOtherObjList = self.checkIntersect(list(Resin.getinstances(self.layer)))
+        intersectOtherCoordList, splitOtherObjList = self.checkIntersect(
+                list(Resin.getinstances(self.layer)))
         if intersectOtherCoordList:
             for intersectOtherCoords in intersectOtherCoordList:
-                intersectOtherObj = Resin(coords=intersectOtherCoords, layer=self.layer+1, angleLabel=self.angle)
-                undulationObj = Undulation(coords=intersectOtherCoords, layer=self.layer, angleLabel=self.angle)
+                intersectOtherObj = Resin(
+                        coords=intersectOtherCoords, layer=self.layer+1,
+                        angleLabel=self.angle)
+                undulationObj = Undulation(
+                        coords=intersectOtherCoords, layer=self.layer,
+                        angleLabel=self.angle)
         if splitOtherObjList and splitSelfObjList:
             totalSplitObjList = splitSelfObjList.intersection(splitOtherObjList)
             for splitCoords in self.splitObject(totalSplitObjList):
-                splitObj = self.newInstance(tempCoords=splitCoords, tempLayer=self.layer, tempAngleLabel=self.angle)
+                splitObj = self.newInstance(
+                        tempCoords=splitCoords, tempLayer=self.layer,
+                        tempAngleLabel=self.angle)
         elif splitOtherObjList:
             for splitCoords in self.splitObject(splitOtherObjList):
-                splitObj = self.newInstance(tempCoords=splitCoords, tempLayer=self.layer, tempAngleLabel=self.angle)
+                splitObj = self.newInstance(
+                        tempCoords=splitCoords, tempLayer=self.layer,
+                        tempAngleLabel=self.angle)
         elif splitSelfObjList:
             for splitCoords in self.splitObject(splitSelfObjList):
-                splitObj = self.newInstance(tempCoords=splitCoords, tempLayer=self.layer, tempAngleLabel=self.angle)
+                splitObj = self.newInstance(
+                        tempCoords=splitCoords, tempLayer=self.layer,
+                        tempAngleLabel=self.angle)
 
         if not intersectSelfCoordList and not intersectOtherCoordList:
             for pgon in self._instances:
@@ -84,13 +98,16 @@ class Tape(Polygon):
             else:
                 self._instances.append(self)
 
-    def createObject(self, angle=0, coords=None , holes=None, layer=1, angleLabel=None):
+    def createObject(self, angle=0, coords=None , holes=None, layer=1,
+            angleLabel=None):
         if coords == None:
-            coords = [(-100.0, -w/2), (100.0, -w/2), (100.0, w/2), (-100.0, w/2)]
+            coords = (
+                    [(-100.0, -w/2), (100.0, -w/2), (100.0, w/2), (-100.0, w/2)]
+                    )
         
         # create initial polygon, rotate it, then initialize the tape object
         a = Polygon(coords, holes)
-        b = affinity.rotate(a, angle, origin=centerpoint) # define initial tape and rotate it
+        b = affinity.rotate(a, angle, origin=centerpoint)
         c = b.intersection(boundary) # trim tape using boundary
         new_coords = zip(c.exterior.xy[0], c.exterior.xy[1])
         Polygon.__init__(self,new_coords, holes) # initialize rotated tape
@@ -101,8 +118,8 @@ class Tape(Polygon):
         self.angle = angle
         self.objNumber = next(self._ids)
         
-        # need to define another variable for angle that does not rotate the object 
-        # this is necessary to define material orientations in abaqus later
+        # need to define another variable for angle that does not rotate the 
+        # object this is necessary to define material orientations in abaqus 
         if angleLabel == None:  
             self.angleLabel = self.angle
         else:
@@ -125,7 +142,8 @@ class Tape(Polygon):
     # called from
     @classmethod  
     def newInstance(cls, tempCoords, tempLayer, tempAngleLabel):
-        return cls(coords=tempCoords, layer=tempLayer, angleLabel=tempAngleLabel)
+        return cls(
+                coords=tempCoords, layer=tempLayer, angleLabel=tempAngleLabel)
 
     # this method checks whether the current object intersects with any of the
     # objects in "objectList"
@@ -145,11 +163,14 @@ class Tape(Polygon):
                 # creates multiple intersecting regions or only one
                 if intersectObj.geom_type == 'MultiPolygon':
                     for plygn in intersectObj:
-                        intersectCoords.append(zip(plygn.exterior.xy[0], plygn.exterior.xy[1]))
+                        intersectCoords.append(
+                                zip(plygn.exterior.xy[0], plygn.exterior.xy[1]))
                         intersectObjBuffered = intersectObj.buffer(1*10**-10)
                         differenceObj = self.difference(intersectObjBuffered)
                 elif intersectObj.geom_type == 'Polygon':
-                    intersectCoords.append(zip(intersectObj.exterior.xy[0], intersectObj.exterior.xy[1]))
+                    intersectCoords.append(
+                            zip(intersectObj.exterior.xy[0], 
+                            intersectObj.exterior.xy[1]))
                     intersectObjBuffered = intersectObj.buffer(1*10**-10)
                     differenceObj = self.difference(intersectObjBuffered)
                 else:
@@ -163,9 +184,12 @@ class Tape(Polygon):
         if differenceObject:
             if differenceObject.geom_type == 'MultiPolygon':
                 for plg in differenceObject:
-                    splitCoords.append(zip(plg.exterior.xy[0], plg.exterior.xy[1]))
+                    splitCoords.append(
+                            zip(plg.exterior.xy[0], plg.exterior.xy[1]))
             elif differenceObject.geom_type == 'Polygon':
-                splitCoords.append(zip(differenceObject.exterior.xy[0], differenceObject.exterior.xy[1]))
+                splitCoords.append(
+                        zip(differenceObject.exterior.xy[0],
+                        differenceObject.exterior.xy[1]))
             else:
                 print 'Not a polygon or multipolygon'
         return splitCoords
@@ -176,36 +200,50 @@ class Tape(Polygon):
         return 'Layer: {}, Number: {}'.format(self.layer, self.objNumber)               
 
 # the Resin class is a subclass of the Tape class. Aside from object creation, 
-# the class defines its own __init__ method as its intersection hebaviour is
+# the class defines its own __init__ method as its intersection behaviour is
 # different (resin intersecting tape -> no undulation). 
 class Resin(Tape):
     _ids = count(0)
     _instances = []
 
-    def __init__(self, angle=0, coords=None , holes=None, layer=1, angleLabel=None):
+    def __init__(self, angle=0, coords=None , holes=None, layer=1,
+            angleLabel=None):
         self.createObject(angle, coords, holes, layer, angleLabel)
-        # first check intersection with own type e.g. for tapes check intersect with other tapes
-        intersectSelfCoordList, splitSelfObjList = self.checkIntersect(list(self.getinstances(self.layer)))
+        # first check intersection with own type e.g. for tapes check intersect
+        # with other tapes
+        intersectSelfCoordList, splitSelfObjList = self.checkIntersect(
+                list(self.getinstances(self.layer)))
         if intersectSelfCoordList:
             for intersectSelfCoords in intersectSelfCoordList:
-                intersectSelfObj = self.newInstance(tempCoords=intersectSelfCoords, tempLayer=self.layer+1, tempAngleLabel=self.angle)
+                intersectSelfObj = self.newInstance(
+                        tempCoords=intersectSelfCoords, tempLayer=self.layer+1,
+                        tempAngleLabel=self.angle)
 
         # check intersect with other e.g. for tapes check intersect with resin 
-        intersectOtherCoordList, splitOtherObjList = self.checkIntersect(list(Tape.getinstances(self.layer)))
+        intersectOtherCoordList, splitOtherObjList = self.checkIntersect(
+                list(Tape.getinstances(self.layer)))
         if intersectOtherCoordList:
             for intersectOtherCoords in intersectOtherCoordList:
-                intersectOtherObj = self.newInstance(tempCoords=intersectOtherCoords, tempLayer=self.layer+1, tempAngleLabel=self.angle)
+                intersectOtherObj = self.newInstance(
+                        tempCoords=intersectOtherCoords,
+                        tempLayer=self.layer+1, tempAngleLabel=self.angle)
 
         if splitOtherObjList and splitSelfObjList:
             totalSplitObjList = splitSelfObjList.intersection(splitOtherObjList)
             for splitCoords in self.splitObject(totalSplitObjList):
-                splitObj = self.newInstance(tempCoords=splitCoords, tempLayer=self.layer, tempAngleLabel=self.angle)
+                splitObj = self.newInstance(
+                        tempCoords=splitCoords, tempLayer=self.layer,
+                        tempAngleLabel=self.angle)
         elif splitOtherObjList:
             for splitCoords in self.splitObject(splitOtherObjList):
-                splitObj = self.newInstance(tempCoords=splitCoords, tempLayer=self.layer, tempAngleLabel=self.angle)
+                splitObj = self.newInstance(
+                        tempCoords=splitCoords, tempLayer=self.layer,
+                        tempAngleLabel=self.angle)
         elif splitSelfObjList:
             for splitCoords in self.splitObject(splitSelfObjList):
-                splitObj = self.newInstance(tempCoords=splitCoords, tempLayer=self.layer, tempAngleLabel=self.angle)
+                splitObj = self.newInstance(
+                        tempCoords=splitCoords, tempLayer=self.layer,
+                        tempAngleLabel=self.angle)
 
         if not intersectSelfCoordList and not intersectOtherCoordList:
             for pgon in self._instances:
@@ -220,22 +258,31 @@ class Resin(Tape):
 class Undulation(Tape):
     _ids = count(0)
     _instances = []
-    def __init__(self, angle=0, coords=None , holes=None, layer=1, angleLabel=None, check=True):
+    def __init__(self, angle=0, coords=None , holes=None, layer=1,
+            angleLabel=None, check=True):
         self.createObject(angle, coords, holes, layer, angleLabel)
         splitUndulationCoordsList = None
         if check:
-            intersectSelfCoordList, splitSelfObjList = self.checkIntersect(list(self.getinstances(self.layer)), buffer=False)
+            intersectSelfCoordList, splitSelfObjList = self.checkIntersect(
+                    list(self.getinstances(self.layer)), buffer=False)
             if intersectSelfCoordList:
                 for intersectSelfCoords in intersectSelfCoordList:
-                    intersectSelfObj = self.newInstance(tempCoords=intersectSelfCoords, tempLayer=self.layer+1, tempAngleLabel=self.angle)
-                    splitUndulationCoordsList = self.splitObject(splitSelfObjList)
+                    intersectSelfObj = self.newInstance(
+                            tempCoords=intersectSelfCoords,
+                            tempLayer=self.layer+1, tempAngleLabel=self.angle)
+                    splitUndulationCoordsList = self.splitObject(
+                            splitSelfObjList)
 
             else:
                 if self.layer == 1:
-                    newUndulation = Undulation(coords=self.coordinates, layer=2, angleLabel=self.angle, check=False)
+                    newUndulation = Undulation(
+                            coords=self.coordinates, layer=2,
+                            angleLabel=self.angle, check=False)
                     bottomLayer = 1
                 else:
-                    newUndulation = Undulation(coords=self.coordinates, layer=self.layer, angleLabel=self.angle, check=False)
+                    newUndulation = Undulation(
+                            coords=self.coordinates, layer=self.layer,
+                            angleLabel=self.angle, check=False)
                     bottomLayer = self.layer - 1
 
                 for prevUndulation in list(self.getinstances(bottomLayer)):
@@ -247,96 +294,105 @@ class Undulation(Tape):
                         if intersectObj:
                             if intersectObj.geom_type == 'MultiPolygon':
                                 for plygn in intersectObj:
-                                    intersectCoords.append(zip(plygn.exterior.xy[0], plygn.exterior.xy[1]))
-                                    intersectObjBuffered = intersectObj.buffer(1*10**-10)
-                                    prevSplitUndulationObj = prevUndulation.difference(intersectObjBuffered)
-                                    newSplitUndulationObj = self.difference(intersectObjBuffered)
+                                    intersectCoords.append(
+                                            zip(plygn.exterior.xy[0],
+                                            plygn.exterior.xy[1]))
+                                    intersectObjBuffered = intersectObj.buffer(
+                                            1*10**-10)
+                                    prevSplitUndulationObj = (
+                                            prevUndulation.difference(
+                                                intersectObjBuffered))
+                                    newSplitUndulationObj = self.difference(
+                                            intersectObjBuffered)
                             elif intersectObj.geom_type == 'Polygon':
-                                intersectCoords.append(zip(intersectObj.exterior.xy[0], intersectObj.exterior.xy[1]))
-                                intersectObjBuffered = intersectObj.buffer(1*10**-10)
-                                prevSplitUndulationObj = prevUndulation.difference(intersectObjBuffered)
-                                newSplitUndulationObj = self.difference(intersectObjBuffered)
+                                intersectCoords.append(
+                                        zip(intersectObj.exterior.xy[0],
+                                        intersectObj.exterior.xy[1]))
+                                intersectObjBuffered = intersectObj.buffer(
+                                        1*10**-10)
+                                prevSplitUndulationObj = (
+                                        prevUndulation.difference(
+                                            intersectObjBuffered))
+                                newSplitUndulationObj = self.difference(
+                                        intersectObjBuffered)
 
-                            prevSplitUndulationCoords = self.splitObject(prevSplitUndulationObj)
-                            newSplitUndulationCoords = self.splitObject(newSplitUndulationObj)
+                            prevSplitUndulationCoords = self.splitObject(
+                                    prevSplitUndulationObj)
+                            newSplitUndulationCoords = self.splitObject(
+                                    newSplitUndulationObj)
                             for coordinateSet in intersectCoords:
-                                newUndulation = Undulation(coords=coordinateSet, layer=bottomLayer, angleLabel=(self.angle, prevUndulation.angle), check=False)             
+                                newUndulation = Undulation(
+                                        coords=coordinateSet, layer=bottomLayer,
+                                        angleLabel=(self.angle,
+                                            prevUndulation.angle), check=False)             
                             for coordinateSet2 in prevSplitUndulationCoords:
-                                prevSplitUndulation = Undulation(coords=coordinateSet2, layer=bottomLayer, angleLabel=prevUndulation.angle, check=False)             
+                                prevSplitUndulation = Undulation(
+                                        coords=coordinateSet2,
+                                        layer=bottomLayer,
+                                        angleLabel=prevUndulation.angle,
+                                        check=False)             
                             for coordinateSet3 in newSplitUndulationCoords:
-                                newSplitUndulation = Undulation(coords=coordinateSet3, layer=bottomLayer, angleLabel=self.angle, check=False)             
+                                newSplitUndulation = Undulation(
+                                        coords=coordinateSet3, 
+                                        layer=bottomLayer, 
+                                        angleLabel=self.angle,
+                                        check=False)             
                             
                             self._instances.remove(prevUndulation)
                     else:
                         continue
                 else:
-                    newUndulation = Undulation(coords=self.coordinates, layer=bottomLayer, angleLabel=self.angle, check=False)
+                    newUndulation = Undulation(
+                            coords=self.coordinates, layer=bottomLayer,
+                            angleLabel=self.angle, check=False)
         
         if splitUndulationCoordsList:
             for splitUndulationCoords in splitUndulationCoordsList:
-                splitUndulationBottom = Undulation(coords=splitUndulationCoords, layer=self.layer, angleLabel=self.angle, check=False)     
-                splitUndulationTop = Undulation(coords=splitUndulationCoords, layer=self.layer+1, angleLabel=self.angle, check=False)
+                splitUndulationBottom = Undulation(
+                        coords=splitUndulationCoords, layer=self.layer,
+                        angleLabel=self.angle, check=False)     
+                splitUndulationTop = Undulation(
+                        coords=splitUndulationCoords, layer=self.layer+1,
+                        angleLabel=self.angle, check=False)
 
         if not check:
             self._instances.append(self)
-                
 
 
-
-
-# testTape = Tape(coords=[(-100.0, -20), (100.0, -20), (100.0, -10), (-100.0, -10)])
-# testResin = Resin(coords=[(-100.0, -21), (100.0, -21), (100.0, -20), (-100.0, -20)])
-testResin2 = Resin(coords=[(-100.0, -6), (100.0, -6), (100.0, -5), (-100.0, -5)])
-testResin2 = Resin(coords=[(-100.0, 6), (100.0, 6), (100.0, 5), (-100.0, 5)])
-testResin3 = Resin(coords=[(-6.0, 75.0), (-5.0, 75.0), (-5.0, -75.0), (-6.0, -75.0)])
-testResin4 = Resin(coords=[(5.0, 75.0), (6.0, 75.0), (6.0, -75.0), (5.0, -75.0)])
-# testTape2= Tape(angle=90)
+testResin2 = Resin(
+        coords=[(-100.0, -6), (100.0, -6), (100.0, -5), (-100.0, -5)])
+testResin2 = Resin(
+        coords=[(-100.0, 6), (100.0, 6), (100.0, 5), (-100.0, 5)])
+testResin3 = Resin(
+        coords=[(-6.0, 75.0), (-5.0, 75.0), (-5.0, -75.0), (-6.0, -75.0)])
+testResin4 = Resin(
+        coords=[(5.0, 75.0), (6.0, 75.0), (6.0, -75.0), (5.0, -75.0)])
 
 
 tape1 = Tape(angle=0)
-
 tape3 = Tape(angle=90)
-print tape3.coordinates
-# tape5 = Tape(angle=90, coords=[(-100.0, -20), (100.0, -20), (100.0, -10), (-100.0, -10)])
-# tape4 = Tape(angle=-45)
 tape2 = Tape(angle=45)
-# print list(Tape.getinstances(4))
-# print list(Tape.getinstances(2))
-# print list(Undulation.getinstances(1))
-print list(Resin.getinstances(1))
-print list(Resin.getinstances(2))
-print list(Resin.getinstances(3))
-print list(Resin.getinstances(4))
 
+# -----------------------------------------------------------------------------
+# Plotting of regions
+# import matplotlib.pyplot as plt
 
-print list(Undulation.getinstances(1))
-print list(Undulation.getinstances(2))
-print list(Undulation.getinstances(3))
-print list(Undulation.getinstances(4))
+# f, axes = plt.subplots(3, 3, sharex='col', sharey='row')
+# f.suptitle('Geometry per Layer')
 
-f, axes = plt.subplots(3, 3, sharex='col', sharey='row')
-f.suptitle('Geometry per Layer')
-
-g = 1
-for i in range(3):
-    for j in range(3):
-        if list(Undulation.getinstances(g)):
-            for k in range(len(list(Undulation.getinstances(g)))):
-                xi,yi = list(Undulation.getinstances(g))[k].exterior.xy
-                axes[i,j].plot(xi,yi)
-                axes[i,j].set_title('Layer: {}'.format(g))
-            xb, yb = boundary.exterior.xy
-            axes[i,j].plot(xb,yb)
-        else:
-            break
-        g += 1
-    
-
-# print list(Undulation.getinstances(1))[0].coordinates
-# print list(Undulation.getinstances(1))[1].coordinates
-# print list(Undulation.getinstances(1))[2].coordinates
-# print list(Undulation.getinstances(1))[3].coordinates
-
+# g = 1
+# for i in range(3):
+#     for j in range(3):
+#         if list(Undulation.getinstances(g)):
+#             for k in range(len(list(Undulation.getinstances(g)))):
+#                 xi,yi = list(Undulation.getinstances(g))[k].exterior.xy
+#                 axes[i,j].plot(xi,yi)
+#                 axes[i,j].set_title('Layer: {}'.format(g))
+#             xb, yb = boundary.exterior.xy
+#             axes[i,j].plot(xb,yb)
+#         else:
+#             break
+#         g += 1
 
 # g = 1
 # for i in range(3):
@@ -351,8 +407,5 @@ for i in range(3):
 #         else:
 #             break
 #         g += 1
-
-
-
-plt.show(f)
+# plt.show(f)
 

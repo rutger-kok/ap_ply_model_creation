@@ -4,6 +4,7 @@ from shapely.geometry import Point
 import numpy as np
 from shapely.ops import cascaded_union
 from itertools import count
+from itertools import combinations
 
 '''
 This program is used to create interlaced laminate geometries with arbitrary
@@ -52,51 +53,110 @@ class Tape(Polygon):
     _instances = []  # initializes a list of Tape instances 
     def __init__(self, angle=0, coords=None , holes=None, layer=1,
             angleLabel=None):
-        
+
+        # check intersect with self (other Tape objects)
         self.createObject(angle, coords, holes, layer, angleLabel)
-        # first check intersection with own type e.g. for tapes check 
-        # intersect with other tapes
-        intersectSelfCoordList, splitSelfObjList = self.checkIntersect(
-                list(self.getinstances(self.layer)))
-        if intersectSelfCoordList:
-            for intersectSelfCoords in intersectSelfCoordList:
-                intersectSelfObj = self.newInstance(
-                        tempCoords=intersectSelfCoords, tempLayer=self.layer+1,
-                        tempAngleLabel=self.angle)
-        
-        intersectOtherCoordList, splitOtherObjList = self.checkIntersect(
-                list(Resin.getinstances(self.layer)))
-        if intersectOtherCoordList:
-            for intersectOtherCoords in intersectOtherCoordList:
-                intersectOtherObj = Resin(
-                        coords=intersectOtherCoords, layer=self.layer+1,
-                        angleLabel=self.angle)
+        tapeIntSelfCoordList, tapeSplitSelf = self.checkSelfIntersect()
+
+        # check intersect with Undulation objects
+        tapeIntUndCoordList, tapeSplitUnd = self.checkIntersect(
+                list(Undulation.getinstances(self.layer)))
+        if tapeIntUndCoordList:
+            for tapeIntUndCoords in tapeIntUndCoordList:
                 undulationObj = Undulation(
-                        coords=intersectOtherCoords, layer=self.layer,
+                        coords=tapeIntUndCoords, layer=self.layer,
                         angleLabel=self.angle)
-        if splitOtherObjList and splitSelfObjList:
-            totalSplitObjList = splitSelfObjList.intersection(splitOtherObjList)
-            for splitCoords in self.splitObject(totalSplitObjList):
-                splitObj = self.newInstance(
-                        tempCoords=splitCoords, tempLayer=self.layer,
-                        tempAngleLabel=self.angle)
-        elif splitOtherObjList:
-            for splitCoords in self.splitObject(splitOtherObjList):
-                splitObj = self.newInstance(
-                        tempCoords=splitCoords, tempLayer=self.layer,
-                        tempAngleLabel=self.angle)
-        elif splitSelfObjList:
-            for splitCoords in self.splitObject(splitSelfObjList):
-                splitObj = self.newInstance(
-                        tempCoords=splitCoords, tempLayer=self.layer,
+
+        # check intersect with Resin objects
+        # empty object used to combine split tape regions
+        intersectObjList = []
+        # iterate over resin objects (cannot merge b.c. intersecting region must
+        # be deleted)
+        for resinObject in list(Resin.getinstances(self.layer)):
+            if self.intersection(resinObject):
+                tapeIntResinCoords = []
+                intersectObj = self.intersection(resinObject)
+                if intersectObj:
+                    # defines behaviour depending on type of intersectObj
+                    if intersectObj.geom_type == 'Polygon':
+                        tapeIntResinCoords.append(
+                                zip(intersectObj.exterior.xy[0],
+                                intersectObj.exterior.xy[1]))
+                        intersectObjBuff= intersectObj.buffer(1*10**-10)
+                        intersectObjList.append(intersectObjBuff)
+                        resinSplitResinObj = (
+                                resinObject.difference(intersectObjBuff))
+                    else:
+                        print 'Not a polygon'
+                        print intersectObj.geom_type
+
+                    # coordinates of resin regions not in intersecting region
+                    resinSplitResinObjCoords = self.splitObject(resinSplitResinObj)
+                    # remove intersecting resin region from list (this region
+                    # is replaced by an undulation region and the split resin 
+                    # regions)
+                    Resin._instances.remove(resinObject)
+                    
+                    # create undulation region
+                    for coordinateSet in tapeIntResinCoords:
+                        newUndulation = Undulation(
+                                coords=coordinateSet, layer=self.layer,
+                                angleLabel=self.angle)             
+                    # create split resin regions
+                    for coordinateSet2 in resinSplitResinObjCoords:
+                        splitResin = Resin(
+                                coords=coordinateSet2, layer=self.layer,
+                                angleLabel=self.angle, check=False)                      
+            else:
+                continue
+
+        # combine intersections and define regions of tape not intersecting
+        # with resin regions
+        tapeIntResinCoordList = []
+        tapeSplitResin = []
+        if intersectObjList:
+            mergedResin = cascaded_union(intersectObjList)
+            tapeSplitResin = self.difference(mergedResin)
+            tapeIntResinCoordList = self.splitObject(tapeSplitResin)
+
+        # define region of Tape not intersecting with any other object 
+        # (not with other Tape, Undulation, or Resin objects)
+        totalSplitObjList = None
+        for item in (tapeSplitResin, tapeSplitSelf, tapeSplitUnd):
+            if item and not item.is_empty:
+                if totalSplitObjList:
+                    totalSplitObjList = totalSplitObjList.intersection(item.buffer(-1*10**-8))
+                else:
+                    totalSplitObjList = item
+
+        # create split tape object (for non-intersecting Tape regions)
+        if totalSplitObjList:
+            for tapeSplitCoords in self.splitObject(totalSplitObjList):
+                # print tapeSplitCoords
+                tapeSplitObj = self.newInstance(
+                        tempCoords=tapeSplitCoords, tempLayer=self.layer,
                         tempAngleLabel=self.angle)
 
-        if not intersectSelfCoordList and not intersectOtherCoordList:
-            for pgon in self._instances:
+        # if the current Tape doesnt intersect with any other object it is 
+        # added to the instance list
+        if not tapeIntResinCoordList and not tapeIntSelfCoordList and not tapeIntUndCoordList:
+            for pgon in list(self.getinstances(self.layer)):
                 if self.almost_equals(pgon, decimal=3):
                     break
             else:
                 self._instances.append(self)
+
+    def checkSelfIntersect(self):
+        # first check intersection with own type e.g. for tapes check 
+        # intersect with other tapes
+        intersectSelfList, splitSelfList = self.checkIntersect(
+                list(self.getinstances(self.layer)))
+        if intersectSelfList:
+            for intersectSelfCoords in intersectSelfList:
+                intersectSelfObj = self.newInstance(
+                        tempCoords=intersectSelfCoords, tempLayer=self.layer+1,
+                        tempAngleLabel=self.angle)
+        return intersectSelfList, splitSelfList
 
     def createObject(self, angle=0, coords=None , holes=None, layer=1,
             angleLabel=None):
@@ -195,9 +255,9 @@ class Tape(Polygon):
         return splitCoords
 
     def __repr__(self):
-        return 'Layer: {}, Number: {}'.format(self.layer, self.objNumber)
+        return 'Tape: Layer: {}, Number: {}'.format(self.layer, self.objNumber)
     def __str__(self):
-        return 'Layer: {}, Number: {}'.format(self.layer, self.objNumber)               
+        return 'Tape: Layer: {}, Number: {}'.format(self.layer, self.objNumber)               
 
 # the Resin class is a subclass of the Tape class. Aside from object creation, 
 # the class defines its own __init__ method as its intersection behaviour is
@@ -207,50 +267,51 @@ class Resin(Tape):
     _instances = []
 
     def __init__(self, angle=0, coords=None , holes=None, layer=1,
-            angleLabel=None):
+            angleLabel=None, check=True):
         self.createObject(angle, coords, holes, layer, angleLabel)
-        # first check intersection with own type e.g. for tapes check intersect
-        # with other tapes
-        intersectSelfCoordList, splitSelfObjList = self.checkIntersect(
-                list(self.getinstances(self.layer)))
-        if intersectSelfCoordList:
-            for intersectSelfCoords in intersectSelfCoordList:
-                intersectSelfObj = self.newInstance(
-                        tempCoords=intersectSelfCoords, tempLayer=self.layer+1,
-                        tempAngleLabel=self.angle)
 
-        # check intersect with other e.g. for tapes check intersect with resin 
-        intersectOtherCoordList, splitOtherObjList = self.checkIntersect(
-                list(Tape.getinstances(self.layer)))
-        if intersectOtherCoordList:
-            for intersectOtherCoords in intersectOtherCoordList:
-                intersectOtherObj = self.newInstance(
-                        tempCoords=intersectOtherCoords,
-                        tempLayer=self.layer+1, tempAngleLabel=self.angle)
+        if check:
+            resinIntSelfCoordList, resinSplitSelf = self.checkSelfIntersect()
 
-        if splitOtherObjList and splitSelfObjList:
-            totalSplitObjList = splitSelfObjList.intersection(splitOtherObjList)
-            for splitCoords in self.splitObject(totalSplitObjList):
-                splitObj = self.newInstance(
-                        tempCoords=splitCoords, tempLayer=self.layer,
-                        tempAngleLabel=self.angle)
-        elif splitOtherObjList:
-            for splitCoords in self.splitObject(splitOtherObjList):
-                splitObj = self.newInstance(
-                        tempCoords=splitCoords, tempLayer=self.layer,
-                        tempAngleLabel=self.angle)
-        elif splitSelfObjList:
-            for splitCoords in self.splitObject(splitSelfObjList):
-                splitObj = self.newInstance(
-                        tempCoords=splitCoords, tempLayer=self.layer,
-                        tempAngleLabel=self.angle)
+            # check intersect with other e.g. for tapes check intersect with resin 
+            resinIntTapeCoordList, resinSplitTape = self.checkIntersect(
+                    list(Tape.getinstances(self.layer)))
 
-        if not intersectSelfCoordList and not intersectOtherCoordList:
-            for pgon in self._instances:
-                if self.almost_equals(pgon, decimal=3):
-                    break
-            else:
-                self._instances.append(self)
+            if resinIntTapeCoordList:
+                for resinIntTapeCoords in resinIntTapeCoordList:
+                    resinIntTapeObj = self.newInstance(
+                            tempCoords=resinIntTapeCoords,
+                            tempLayer=self.layer+1, tempAngleLabel=self.angle)
+
+            resinIntUndCoordList, resinSplitUnd = self.checkIntersect(
+                    list(Undulation.getinstances(self.layer)))                            
+            if resinIntUndCoordList:
+                for resinIntUndCoords in resinIntUndCoordList:
+                    resinIntUndObj = self.newInstance(
+                            tempCoords=resinIntUndCoords,
+                            tempLayer=self.layer+1, tempAngleLabel=self.angle)
+
+            totalSplitObjList = None
+            for item in (resinSplitSelf, resinSplitTape, resinSplitUnd):
+                if item and not item.is_empty:
+                    if totalSplitObjList:
+                        totalSplitObjList = totalSplitObjList.intersection(item.buffer(-1*10**-8))
+                    else:
+                        totalSplitObjList = item
+
+            if not resinIntSelfCoordList and not resinIntUndCoordList and not resinIntTapeCoordList:
+                for pgon in list(self.getinstances(self.layer)):
+                    if self.almost_equals(pgon, decimal=3):
+                        break
+                else:
+                    self._instances.append(self)
+        else:
+            self._instances.append(self)
+
+    def __repr__(self):
+        return 'Resin: Layer: {}, Number: {}'.format(self.layer, self.objNumber)
+    def __str__(self):
+        return 'Resin: Layer: {}, Number: {}'.format(self.layer, self.objNumber)   
 
 # the Undulation class is a subclass of the Tape class. The Undulation class
 # defines its own __init__ method which defines how the undulation regions
@@ -356,56 +417,116 @@ class Undulation(Tape):
                         angleLabel=self.angle, check=False)
 
         if not check:
-            self._instances.append(self)
+            for pgon in list(self.getinstances(self.layer)):
+                if self.almost_equals(pgon, decimal=1):
+                    continue
+            else:
+                # print 'Created Undulation'
+                # print self.coordinates
+                # print self.layer
+                self._instances.append(self)
 
+    def __repr__(self):
+        return 'Undulation: Layer: {}, Number: {}'.format(self.layer, self.objNumber)
+    def __str__(self):
+        return 'Undulation: Layer: {}, Number: {}'.format(self.layer, self.objNumber)   
 
+tape1 = Tape(angle=0)
 testResin2 = Resin(
-        coords=[(-100.0, -6), (100.0, -6), (100.0, -5), (-100.0, -5)])
+        coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
 testResin2 = Resin(
-        coords=[(-100.0, 6), (100.0, 6), (100.0, 5), (-100.0, 5)])
+        coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)])
+
+tape3 = Tape(angle=90)
 testResin3 = Resin(
         coords=[(-6.0, 75.0), (-5.0, 75.0), (-5.0, -75.0), (-6.0, -75.0)])
 testResin4 = Resin(
         coords=[(5.0, 75.0), (6.0, 75.0), (6.0, -75.0), (5.0, -75.0)])
 
+# tape2 = Tape(angle=45)
 
-tape1 = Tape(angle=0)
-tape3 = Tape(angle=90)
-tape2 = Tape(angle=45)
 
 # -----------------------------------------------------------------------------
-# Plotting of regions
-# import matplotlib.pyplot as plt
 
-# f, axes = plt.subplots(3, 3, sharex='col', sharey='row')
-# f.suptitle('Geometry per Layer')
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+    # Plotting of regions
 
-# g = 1
-# for i in range(3):
-#     for j in range(3):
-#         if list(Undulation.getinstances(g)):
-#             for k in range(len(list(Undulation.getinstances(g)))):
-#                 xi,yi = list(Undulation.getinstances(g))[k].exterior.xy
-#                 axes[i,j].plot(xi,yi)
-#                 axes[i,j].set_title('Layer: {}'.format(g))
-#             xb, yb = boundary.exterior.xy
-#             axes[i,j].plot(xb,yb)
-#         else:
-#             break
-#         g += 1
+    f, axes = plt.subplots(3, 3, sharex='col', sharey='row')
+    f.suptitle('Geometry per Layer')
 
-# g = 1
-# for i in range(3):
-#     for j in range(3):
-#         if list(Tape.getinstances(g)):
-#             for k in range(len(list(Tape.getinstances(g)))):
-#                 xi,yi = list(Tape.getinstances(g))[k].exterior.xy
-#                 axes[i,j].plot(xi,yi)
-#                 axes[i,j].set_title('Layer: {}'.format(g))
-#             xb, yb = boundary.exterior.xy
-#             axes[i,j].plot(xb,yb)
-#         else:
-#             break
-#         g += 1
-# plt.show(f)
+    # g = 1
+    # for i in range(3):
+    #     for j in range(3):
+    #         if list(Undulation.getinstances(g)):
+    #             for k in range(len(list(Undulation.getinstances(g)))):
+    #                 xi,yi = list(Undulation.getinstances(g))[k].exterior.xy
+    #                 axes[i,j].plot(xi,yi)
+    #                 axes[i,j].set_title('Layer: {}'.format(g))
+    #             xb, yb = boundary.exterior.xy
+    #             axes[i,j].plot(xb,yb)
+    #         else:
+    #             break
+    #         g += 1
+
+    g = 1
+    for i in range(3):
+        for j in range(3):
+            if list(Tape.getinstances(g)):
+                for k in range(len(list(Tape.getinstances(g)))):
+                    xi,yi = list(Tape.getinstances(g))[k].exterior.xy
+                    axes[i,j].plot(xi,yi)
+                    axes[i,j].set_title('Layer: {}'.format(g))
+                xb, yb = boundary.exterior.xy
+                axes[i,j].plot(xb,yb)
+            else:
+                break
+            g += 1
+
+    # g = 1
+    # for i in range(3):
+    #     for j in range(3):
+    #         if list(Resin.getinstances(g)):
+    #             for k in range(len(list(Resin.getinstances(g)))):
+    #                 xi,yi = list(Resin.getinstances(g))[k].exterior.xy
+    #                 axes[i,j].plot(xi,yi)
+    #                 axes[i,j].set_title('Layer: {}'.format(g))
+    #             xb, yb = boundary.exterior.xy
+    #             axes[i,j].plot(xb,yb)
+    #         else:
+    #             break
+    #         g += 1
+    
+    # f, axes = plt.subplots(3, 3, sharex='col', sharey='row')
+    # f.suptitle('Geometry per Layer')
+    # g = 0
+    # for i in range(3):
+    #     for j in range(3):
+    #         try:
+    #             xi,yi = list(Tape.getinstances(1))[g].exterior.xy
+    #             axes[i,j].plot(xi,yi)
+    #             axes[i,j].set_title('Layer: {}'.format(g))
+    #             xb, yb = boundary.exterior.xy
+    #             axes[i,j].plot(xb,yb)
+    #             g += 1
+    #         except IndexError:
+    #             break
+          
+    # f2, axes = plt.subplots(3, 3, sharex='col', sharey='row')
+    # f2.suptitle('Geometry per Layer')
+    # g = 0
+    # for i in range(3):
+    #     for j in range(3):
+    #         try:
+    #             xi,yi = list(Tape.getinstances(2))[g].exterior.xy
+    #             axes[i,j].plot(xi,yi)
+    #             axes[i,j].set_title('Layer: {}'.format(g))
+    #             xb, yb = boundary.exterior.xy
+    #             axes[i,j].plot(xb,yb)
+    #             g += 1
+    #         except IndexError:
+    #             break
+    # plt.show(f2)
+
+    plt.show(f)
 

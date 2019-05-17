@@ -66,13 +66,6 @@ class Tape(Polygon):
                 if tapeIntAllCoordList:
                     for tapeIntAllCoords in tapeIntAllCoordList:
                         mergedTapeLayer = Tape(
-                    for tapeSplitAllCoords in self.splitObject(tapeSplitAll):
-                        tapeSplitAllObj = Tape(
-                                coords=tapeSplitAllCoords, layer=self.layer,
-                                angleLabel=self.angle, step1=False)                
-                else:
-                    Tape(coords=self.coordinates, layer=self.layer, 
-                            angleLabel = self.angle, step1=False)
                                 coords=tapeIntAllCoords, layer=self.layer+1,
                                 angleLabel=self.angle)
                     for tapeSplitAllCoords in self.splitObject(tapeSplitAll):
@@ -228,7 +221,7 @@ class Tape(Polygon):
             if buffer:  # applies negative buffer if requested
                 # note the objects in the objectList are merged before the 
                 # intersection check
-                mergedObj = cascaded_union(objectList).buffer(-1*10**-5)
+                mergedObj = cascaded_union(objectList).buffer(-0.5*10**-5)
             else:
                 mergedObj = cascaded_union(objectList)
             intersectObj = self.intersection(mergedObj)
@@ -239,13 +232,13 @@ class Tape(Polygon):
                     for plygn in intersectObj:
                         intersectCoords.append(
                                 zip(plygn.exterior.xy[0], plygn.exterior.xy[1]))
-                        intersectObjBuffered = intersectObj.buffer(1*10**-5)
+                        intersectObjBuffered = intersectObj.buffer(0.5*10**-5)
                         differenceObj = self.difference(intersectObjBuffered)
                 elif intersectObj.geom_type == 'Polygon':
                     intersectCoords.append(
                             zip(intersectObj.exterior.xy[0], 
                             intersectObj.exterior.xy[1]))
-                    intersectObjBuffered = intersectObj.buffer(1*10**-5)
+                    intersectObjBuffered = intersectObj.buffer(0.5*10**-5)
                     differenceObj = self.difference(intersectObjBuffered)
                 else:
                     print 'Not a polygon or multipolygon'     
@@ -435,9 +428,13 @@ testResin4 = Resin(
         coords=[(5.0, 75.0), (6.0, 75.0), (6.0, -75.0), (5.0, -75.0)])
 
 tape2 = Tape(angle=45)
+tape2 = Tape(angle=-45)
 
 
 # -----------------------------------------------------------------------------
+# This section of the script only runs if this script is run directly (i.e. as
+# long as this script is not imported). It plots the geometries for testing
+# purposes.
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -498,6 +495,6 @@ if __name__ == '__main__':
     plt.show(f2)
     plt.show(f3)
     
-    print Tape._instances
-    print Resin._instances
-    print Undulation._instances
+    # print Tape._instances
+    # print Resin._instances
+    # print Undulation._instances

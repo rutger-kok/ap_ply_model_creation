@@ -66,6 +66,13 @@ class Tape(Polygon):
                 if tapeIntAllCoordList:
                     for tapeIntAllCoords in tapeIntAllCoordList:
                         mergedTapeLayer = Tape(
+                    for tapeSplitAllCoords in self.splitObject(tapeSplitAll):
+                        tapeSplitAllObj = Tape(
+                                coords=tapeSplitAllCoords, layer=self.layer,
+                                angleLabel=self.angle, step1=False)                
+                else:
+                    Tape(coords=self.coordinates, layer=self.layer, 
+                            angleLabel = self.angle, step1=False)
                                 coords=tapeIntAllCoords, layer=self.layer+1,
                                 angleLabel=self.angle)
                     for tapeSplitAllCoords in self.splitObject(tapeSplitAll):

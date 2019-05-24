@@ -26,6 +26,7 @@ boundary = Polygon([(-50.0, -75.0), (50.0, -75.0), (50.0, 75.0), (-50.0, 75.0)])
 w = 10.0
 t = 0.2
 
+# TODO code exception for 90 degree tapes
 def laminateCreation(tapeAngles, tapeWidths, tapeSpacing, t=2.0, r=2.0):
     tapes = zip(tapeAngles, tapeWidths, tapeSpacing)
     for tape in tapes:
@@ -49,11 +50,11 @@ def laminateCreation(tapeAngles, tapeWidths, tapeSpacing, t=2.0, r=2.0):
                     [(-1000.0, (w/2.0)+os), (-1000.0, (w/2.0)+os+r),
                     (1000.0, (w/2.0)+os+r), (1000.0, (w/2.0)+os)])
                                         
-            createdTape = Tape(coords=tapeCoords, angle=a)
+            # createdTape = Tape(coords=tapeCoords, angle=a)
             # createdResin1 = Resin(coords=resinCoords1, angle=a)
             # createdResin2 = Resin(coords=resinCoords2, angle=a)
 
-laminate1 = laminateCreation(tapeAngles=(87,), tapeWidths=(10,), tapeSpacing=(0,))
+laminate1 = laminateCreation(tapeAngles=(0,), tapeWidths=(10,), tapeSpacing=(1,))
 
 # laminate1 = laminateCreation(tapeAngles=(0,90,45), tapeWidths=(10,10,10), tapeSpacing=(1,1,1))
 

@@ -37,16 +37,9 @@ The parts of the tapes that are not within the intersection region are placed
 on the current layer. 
 
 '''
-# import matplotlib.pyplot as plt
 
-# test = Polygon([(5.0, 5.0008), (5.0, 5.0008), (5.0, 5.0), (5.0, 5.0), (5.0, -1.33974), (2.88675, -5.0), (-5.0, -5.0), (-5.0, -5.0008), (-5.0, -5.0008), (-5.0, -5.0), (-5.0, -5.0), (-5.0, 1.33974), (-2.88675, 5.0), (5.0, 5.0), (5.0, 5.0008)])
-# # define outside boundary of the impact specimen
+# define outside boundary of the impact specimen
 boundary = Polygon([(-50.0, -75.0), (50.0, -75.0), (50.0, 75.0), (-50.0, 75.0)])
-# xb, yb = boundary.exterior.xy
-# x1,y1 = test.exterior.xy 
-# plt.plot(xb,yb)
-# plt.plot(x1,y1)
-# plt.show()
 
 # # define tape width and thickness
 w = 10.0
@@ -56,9 +49,11 @@ t = 0.2
 class Tape(Polygon):
     _ids = count(0)  # counts the number of instances created
     _instances = []  # initializes a list of Tape instances 
-    def __init__(self, angle=0, coords=None , holes=None, layer=1,
-            angleLabel=None, step1=True, check=True):
-        self.createObject(angle, coords, holes, layer, angleLabel)
+    def __init__(self, angle=0, coords=None, layer=1,
+            angleLabel=None, step1=True, check=True, rotateP=None):
+
+        self.createObject(angle, coords, layer, angleLabel, rotateP)
+
         if check:
 
             if step1:
@@ -80,12 +75,13 @@ class Tape(Polygon):
                             tapeSplitAllObj = Tape(
                                 coords=self.clean(tapeSplitAllCoords),
                                 layer=self.layer, angleLabel=self.angle,
-                                step1=False)     
+                                step1=False, check=False)     
                         else: continue           
                 else:
                     if self.clean(self.coordinates):
-                        Tape(coords=self.clean(self.coordinates), layer=self.layer, 
-                            angleLabel = self.angle, step1=False)
+                        Tape(coords=self.clean(self.coordinates),
+                                layer=self.layer, angleLabel = self.angle,
+                                step1=False)
 
             else:
                 # check intersect with self (other Tape objects)
@@ -107,8 +103,12 @@ class Tape(Polygon):
                                 layer=self.layer, angleLabel=self.angle)
                         else: continue
 
-                        for resinObject in Resin.getinstances(self.layer-1):
-                            diffObject = Polygon(coordinateSet).buffer(0, join_style=2)
+                        validResinObject = map(
+                                lambda x: x.buffer(0),
+                                Resin.getinstances(self.layer-1))
+                        for resinObject in validResinObject:
+                            diffObject = Polygon(coordinateSet).buffer(
+                                    0, join_style=2)
                             if diffObject.intersection(resinObject):
                                 Resin._instances.remove(resinObject)
                                 resinSplitObjectList = resinObject.difference(
@@ -140,10 +140,10 @@ class Tape(Polygon):
                 if totalSplitObjList:
                     for tapeSplitCoords in self.splitObject(totalSplitObjList):
                         if self.clean(tapeSplitCoords):
-                            tapeSplitObj = self.newInstance(
-                                tempCoords=self.clean(tapeSplitCoords),
-                                tempLayer=self.layer,
-                                tempAngleLabel=self.angle)
+                            tapeSplitObj = Tape(
+                                coords=self.clean(tapeSplitCoords),
+                                layer=self.layer,
+                                angleLabel=self.angle, check=False)
                         else: continue
 
                 # if the current Tape doesnt intersect with any other object it
@@ -170,7 +170,8 @@ class Tape(Polygon):
         cleaned = poly.buffer(-tol,join_style=2).buffer(
                 tol*cf, join_style=2).intersection(poly)#.simplify(1*10**-10)
         try:
-            new_coords = list(zip(cleaned.exterior.xy[0],cleaned.exterior.xy[1]))
+            new_coords = list(
+                    zip(cleaned.exterior.xy[0],cleaned.exterior.xy[1]))
             return new_coords
         except AttributeError:
             # print coordinates
@@ -193,20 +194,25 @@ class Tape(Polygon):
                 else: continue
         return intersectSelfList, splitSelfList
 
-    def createObject(self, angle=0, coords=None , holes=None, layer=1,
-            angleLabel=None):
+    def createObject(self, angle=0, coords=None ,layer=1,
+            angleLabel=None, rotationPoint=None):
+
         if coords == None:
             coords = (
                     [(-100.0, -w/2), (100.0, -w/2), (100.0, w/2), (-100.0, w/2)]
                     )
-        a = Polygon(coords, holes)
-        b = affinity.rotate(a, angle, origin=a.centroid)
+        a = Polygon(coords)
+        if rotationPoint == None:
+            self.rotationPoint = a.centroid
+        else:
+            self.rotationPoint = rotationPoint
+        b = affinity.rotate(a, angle, origin=self.rotationPoint)
         c = b.intersection(boundary) # trim tape using boundary
-        # x0r = map(lambda x: round(x, 6), c.exterior.xy[0]) 
-        # y0r = map(lambda x: round(x, 6), c.exterior.xy[1])
-        # new_coords = zip(x0r,y0r)
-        new_coords = zip(c.exterior.xy[0],c.exterior.xy[1])
-        Polygon.__init__(self,new_coords, holes) # initialize rotated tape
+        x0r = map(lambda x: round(x, 8), c.exterior.xy[0]) 
+        y0r = map(lambda x: round(x, 8), c.exterior.xy[1])
+        new_coords = zip(x0r,y0r)
+        # new_coords = zip(c.exterior.xy[0],c.exterior.xy[1])
+        Polygon.__init__(self,new_coords) # initialize rotated tape
 
         # object parameters
         self.coordinates = new_coords  
@@ -246,9 +252,15 @@ class Tape(Polygon):
     def checkIntersect(self, objectList):
         differenceObj = None
         intersectCoords = []
-        if objectList:
-            mergedObj = cascaded_union(objectList).buffer(-1*10**-6, join_style=2)
-            selfBuffer = self.buffer(0, join_style=2)
+        validObjectList = map(lambda x: x.buffer(0), objectList)
+        if validObjectList:
+            # mergenoBuffer = cascaded_union(objectList)
+            mergedObj = cascaded_union(validObjectList).buffer(0, join_style=2)
+            # print '-----------------------'
+            # print mergenoBufferprint 
+            # print mergedObj
+            # print '________________________'
+            selfBuffer = self.buffer(1*10**-4, join_style=2)
             intersectObj = selfBuffer.intersection(mergedObj)
             if intersectObj:
                 # different behaviour depending on whether the intersection
@@ -285,7 +297,8 @@ class Tape(Polygon):
         return splitCoords
 
     def __repr__(self):
-        return 'Tape: Layer: {}, Number: {}, Coordinates: {}'.format(self.layer, self.objNumber, self.coordinates)
+        return 'Tape: Layer: {}, Number: {}, Coordinates: {}'.format(
+                self.layer, self.objNumber, self.coordinates)
     def __str__(self):
         return 'Tape: Layer: {}, Number: {}'.format(self.layer, self.objNumber)               
 
@@ -296,59 +309,37 @@ class Resin(Tape):
     _ids = count(0)
     _instances = []
 
-    def __init__(self, angle=0, coords=None , holes=None, layer=1,
-            angleLabel=None, check=True):
-        self.createObject(angle, coords, holes, layer, angleLabel)
+    def __init__(self, angle=0, coords=None , layer=1, angleLabel=None,
+            check=True, rotateP=None):
+        self.createObject(angle, coords, layer, angleLabel, rotationPoint=rotateP)
 
         if check:
-            resinIntSelfCoordList, resinSplitSelf = self.checkSelfIntersect()
 
-            # check intersect with other e.g. for tapes check intersect with resin 
-            resinIntTapeCoordList, resinSplitTape = self.checkIntersect(
-                    list(Tape.getinstances(self.layer)))
+            allObjInLayer = list(list(Tape.getinstances(self.layer)) + 
+                    list(Undulation.getinstances(self.layer)) + 
+                    list(Resin.getinstances(self.layer)))
 
-            if resinIntTapeCoordList:
-                for resinIntTapeCoords in resinIntTapeCoordList:
-                    if self.clean(resinIntTapeCoords):
-                        resinIntTapeObj = self.newInstance(
-                            tempCoords=self.clean(resinIntTapeCoords),
-                            tempLayer=self.layer+1, tempAngleLabel=self.angle)
+            resinIntAllCoordList, resinSplitAll = self.checkIntersect(
+                    allObjInLayer)
+            if resinIntAllCoordList:
+                for resinIntAllCoords in resinIntAllCoordList:
+                    if self.clean(resinIntAllCoords):
+                        mergedResinLayer = Resin(
+                            coords=self.clean(resinIntAllCoords),
+                            layer=self.layer+1, angleLabel=self.angle)
                     else: continue
+                for resinSplitAllCoords in self.splitObject(resinSplitAll):
+                    if self.clean(resinSplitAllCoords):
+                        resinSplitAllObj = Resin(
+                            coords=self.clean(resinSplitAllCoords),
+                            layer=self.layer, angleLabel=self.angle,
+                            check=False)     
+                    else: continue           
+            else:
+                if self.clean(self.coordinates):
+                    Resin(coords=self.clean(self.coordinates), layer=self.layer, 
+                        angleLabel = self.angle, check=False)
 
-            resinIntUndCoordList, resinSplitUnd = self.checkIntersect(
-                    list(Undulation.getinstances(self.layer)))                            
-            if resinIntUndCoordList:
-                for resinIntUndCoords in resinIntUndCoordList:
-                    if self.clean(resinIntUndCoords):
-                        resinIntUndObj = self.newInstance(
-                            tempCoords=self.clean(resinIntUndCoords),
-                            tempLayer=self.layer+1, tempAngleLabel=self.angle)
-                    else: continue
-
-            totalSplitObjList = None
-            for item in (resinSplitSelf, resinSplitTape, resinSplitUnd):
-                if item and not item.is_empty:
-                    if totalSplitObjList:
-                        totalSplitObjList = totalSplitObjList.intersection(
-                                item)#.buffer(-1*10**-3, join_style=2))
-                    else:
-                        totalSplitObjList = item
-
-            if totalSplitObjList:
-                for resinSplitCoords in self.splitObject(totalSplitObjList):
-                    if self.clean(resinSplitCoords):
-                        resinSplitObj = self.newInstance(
-                            tempCoords=self.clean(resinSplitCoords),
-                            tempLayer=self.layer, tempAngleLabel=self.angle)
-                    else: continue                      
-
-            if not resinIntSelfCoordList and not resinIntUndCoordList and not resinIntTapeCoordList:
-                for pgon in list(self.getinstances(self.layer)):
-                    if self.almost_equals(pgon, decimal=3):
-                        break
-                else:
-                    if self.area > 0.001:
-                        self._instances.append(self)
         else:
             if self.area > 0.001:
                 self._instances.append(self)
@@ -364,9 +355,9 @@ class Resin(Tape):
 class Undulation(Tape):
     _ids = count(0)
     _instances = []
-    def __init__(self, angle=0, coords=None , holes=None, layer=1,
+    def __init__(self, angle=0, coords=None, layer=1,
             angleLabel=None, check=True):
-        self.createObject(angle, coords, holes, layer, angleLabel)
+        self.createObject(angle, coords, layer, angleLabel)
         if check:
             for prevUnd in list(self.getinstances(self.layer)):
                 if self.intersection(prevUnd):
@@ -449,21 +440,135 @@ class Undulation(Tape):
         return 'Undulation: Layer: {}, Number: {}'.format(
                 self.layer, self.objNumber)   
 
-# tape1 = Tape(angle=0)
-# testResin2 = Resin(
+# Test case 1: touching Tapes:
+# testTape1 = Tape(angle=90)
+# testTape2 = Tape(coords=[(5.0, 75.0), (15.0, 75.0), (15.0, -75.0), (5.0, -75.0)])
+
+# Test case 2: touching Resin over tape: (fixed by increasing merged obj buffer to 1*10**-8)
+# testTape1 = Tape(angle=0)
+# testResin1 = Resin(angle=90)
+# testResin2 = Resin(coords=[(5.0, 75.0), (15.0, 75.0), (15.0, -75.0), (5.0, -75.0)])
+
+# test case 3: touching Resin crossing resin and tape:
+# testTape1 = Tape(angle=0)
+# testResin1 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
 # testResin2 = Resin(
 #         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)])
+# testResin3 = Resin(angle=90)
+# testResin4 = Resin(coords=[(5.0, 75.0), (15.0, 75.0), (15.0, -75.0), (5.0, -75.0)])
 
-# tape3 = Tape(angle=90)
+# test case 4: tape crossing tape and resin
+# testTape1 = Tape(angle=0)
+# testResin1 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
+# testResin2 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)])
+# testTape2 = Tape(angle=90)
+
+# test case 5: tape and resin crossing tape and resin
+# testTape1 = Tape(angle=0)
+# testResin1 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
+# testResin2 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)])
+# testTape2 = Tape(angle=90)
 # testResin3 = Resin(
 #         coords=[(-6.0, 75.0), (-5.0, 75.0), (-5.0, -75.0), (-6.0, -75.0)])
 # testResin4 = Resin(
 #         coords=[(5.0, 75.0), (6.0, 75.0), (6.0, -75.0), (5.0, -75.0)])
 
-# # tape4 = Tape(coords=[(6.0, 75.0), (16.0, 75.0), (16.0, -75.0), (6.0, -75.0)])
-# tape2 = Tape(angle=60)
-# tape3 = Tape(angle=-60)
+# test case 6: two tapes and resin (touching) crossing tape and resin
+# testTape1 = Tape(angle=0)
+# testResin1 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
+# testResin2 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)])
+# testTape2 = Tape(angle=90)
+# testResin3 = Resin(
+#         coords=[(-6.0, 75.0), (-5.0, 75.0), (-5.0, -75.0), (-6.0, -75.0)])
+# testResin4 = Resin(
+#         coords=[(5.0, 75.0), (6.0, 75.0), (6.0, -75.0), (5.0, -75.0)])
+# testTape3 = Tape(coords=[(7.0, 75.0), (17.0, 75.0), (17.0, -75.0), (7.0, -75.0)])
+# testResin5 = Resin(
+#         coords=[(6.0, 75.0), (7.0, 75.0), (7.0, -75.0), (6.0, -75.0)])
+# testResin6 = Resin(
+#         coords=[(17.0, 75.0), (18.0, 75.0), (18.0, -75.0), (17.0, -75.0)])
+
+# test case 7: two angled tapes touching
+# testTape1 = Tape(coords=[(-100.0, -5.0), (100.0, -5.0), (100.0, 5.0), (-100.0, 5.0)], angle=45)
+# testTape2 = Tape(coords=[(-100.0, -5.0), (100.0, -5.0), (100.0, -15.0), (-100.0, -15.0)], angle=45, rotateP=testTape1.rotationPoint)
+
+# test case 8: angled tape crossing resin and tape
+# testTape1 = Tape(angle=0)
+# testResin1 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
+# testResin2 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)])
+# testTape2 = Tape(angle=45)
+
+# test case 9: angled tape and resin crossing resin and tape
+# testTape1 = Tape(angle=0)
+# testResin1 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
+# testResin2 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)])
+# testTape2 = Tape(angle=45)
+# testResin3 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testResin4 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45, rotateP=testTape2.rotationPoint)
+
+# test case 10: two angled tapes with touching resin regions crossing tape (fixed by increasing buffer to 1*10**-4)
+# testTape1 = Tape(angle=0)
+# testResin1 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
+# testResin2 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)])
+# testTape2 = Tape(angle=45)
+# testResin3 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testResin4 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testTape3 = Tape(coords=[(-100.0, -7.0), (100.0, -7.0), (100.0, -17.0), (-100.0, -17.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testResin5 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -7.0), (-100.0, -7.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testResin6 = Resin(
+#         coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -18.0), (-100.0, -18.0)], angle=45, rotateP=testTape2.rotationPoint)
+
+# test case 11: angled tape + resin regions intersecting angled tape + resin regions
+# testTape1 = Tape(angle=-45)
+# testResin1 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=-45, rotateP=testTape1.rotationPoint)
+# testResin2 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=-45, rotateP=testTape1.rotationPoint)
+# testTape2 = Tape(angle=45)
+# testResin3 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testResin4 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45, rotateP=testTape2.rotationPoint)
+
+# test case 12: two angled tape + (touching) resin regions intersecting angled tape + resin regions
+testTape1 = Tape(angle=-45)
+# testResin1 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=-45, rotateP=testTape1.rotationPoint)
+# testResin2 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=-45, rotateP=testTape1.rotationPoint)
+testTape2 = Tape(angle=45)
+# testResin3 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testResin4 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45, rotateP=testTape2.rotationPoint)
+testTape2 = Tape(angle=45)
+# testResin3 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testResin4 = Resin(
+#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45, rotateP=testTape2.rotationPoint)
+testTape3 = Tape(coords=[(-100.0, -7.0), (100.0, -7.0), (100.0, -17.0), (-100.0, -17.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testResin5 = Resin(
+#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -7.0), (-100.0, -7.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testResin6 = Resin(
+#         coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -18.0), (-100.0, -18.0)], angle=45, rotateP=testTape2.rotationPoint)
 
 # -----------------------------------------------------------------------------
 # This section of the script only runs if this script is run directly (i.e. as
@@ -527,19 +632,18 @@ if __name__ == '__main__':
     plt.show(f2)
     plt.show(f3)
     
-    # print Tape._instances
-    # print Resin._instances
-    # print Undulation._instances
+    print len(Tape._instances)
+    print len(Resin._instances)
+    print len(Undulation._instances)
 
     # f4, axes = plt.subplots(3, 3, sharex='col', sharey='row')
-    # f4.suptitle('Undulation per Layer')
+    # f4.suptitle('Individual items per Layer')
     # g = 0
     # for i in range(3):
     #     for j in range(3):
     #         try:
-    #             xi,yi = list(Tape.getinstances(2))[g].exterior.xy
+    #             xi,yi = list(Resin.getinstances(1))[g].exterior.xy
     #             axes[i,j].plot(xi,yi)
-    #             axes[i,j].set_title('Layer: {}'.format(g))
     #             xb, yb = boundary.exterior.xy
     #             axes[i,j].plot(xb,yb)
     #             g += 1
@@ -547,5 +651,4 @@ if __name__ == '__main__':
     #             break
 
     # plt.show(f4)
-
 

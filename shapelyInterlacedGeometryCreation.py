@@ -255,12 +255,12 @@ class Tape(Polygon):
         validObjectList = map(lambda x: x.buffer(0), objectList)
         if validObjectList:
             # mergenoBuffer = cascaded_union(objectList)
-            mergedObj = cascaded_union(validObjectList).buffer(0, join_style=2)
+            mergedObj = cascaded_union(validObjectList).buffer(1*10**-8, join_style=2)
             # print '-----------------------'
             # print mergenoBufferprint 
             # print mergedObj
             # print '________________________'
-            selfBuffer = self.buffer(1*10**-4, join_style=2)
+            selfBuffer = self.buffer(1*10**-8, join_style=2)
             intersectObj = selfBuffer.intersection(mergedObj)
             if intersectObj:
                 # different behaviour depending on whether the intersection
@@ -441,15 +441,18 @@ class Undulation(Tape):
                 self.layer, self.objNumber)   
 
 # Test case 1: touching Tapes:
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(angle=90)
 # testTape2 = Tape(coords=[(5.0, 75.0), (15.0, 75.0), (15.0, -75.0), (5.0, -75.0)])
 
-# Test case 2: touching Resin over tape: (fixed by increasing merged obj buffer to 1*10**-8)
+# Test case 2: touching Resin over tape:
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(angle=0)
 # testResin1 = Resin(angle=90)
 # testResin2 = Resin(coords=[(5.0, 75.0), (15.0, 75.0), (15.0, -75.0), (5.0, -75.0)])
 
 # test case 3: touching Resin crossing resin and tape:
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(angle=0)
 # testResin1 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
@@ -459,6 +462,7 @@ class Undulation(Tape):
 # testResin4 = Resin(coords=[(5.0, 75.0), (15.0, 75.0), (15.0, -75.0), (5.0, -75.0)])
 
 # test case 4: tape crossing tape and resin
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(angle=0)
 # testResin1 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
@@ -467,6 +471,7 @@ class Undulation(Tape):
 # testTape2 = Tape(angle=90)
 
 # test case 5: tape and resin crossing tape and resin
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(angle=0)
 # testResin1 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
@@ -479,6 +484,7 @@ class Undulation(Tape):
 #         coords=[(5.0, 75.0), (6.0, 75.0), (6.0, -75.0), (5.0, -75.0)])
 
 # test case 6: two tapes and resin (touching) crossing tape and resin
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(angle=0)
 # testResin1 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
@@ -496,10 +502,12 @@ class Undulation(Tape):
 #         coords=[(17.0, 75.0), (18.0, 75.0), (18.0, -75.0), (17.0, -75.0)])
 
 # test case 7: two angled tapes touching
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(coords=[(-100.0, -5.0), (100.0, -5.0), (100.0, 5.0), (-100.0, 5.0)], angle=45)
 # testTape2 = Tape(coords=[(-100.0, -5.0), (100.0, -5.0), (100.0, -15.0), (-100.0, -15.0)], angle=45, rotateP=testTape1.rotationPoint)
 
 # test case 8: angled tape crossing resin and tape
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(angle=0)
 # testResin1 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
@@ -508,6 +516,7 @@ class Undulation(Tape):
 # testTape2 = Tape(angle=45)
 
 # test case 9: angled tape and resin crossing resin and tape
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(angle=0)
 # testResin1 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
@@ -519,7 +528,8 @@ class Undulation(Tape):
 # testResin4 = Resin(
 #         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45, rotateP=testTape2.rotationPoint)
 
-# test case 10: two angled tapes with touching resin regions crossing tape (fixed by increasing buffer to 1*10**-4)
+# test case 10: two angled tapes with touching resin regions crossing tape and resin region
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(angle=0)
 # testResin1 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)])
@@ -537,6 +547,7 @@ class Undulation(Tape):
 #         coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -18.0), (-100.0, -18.0)], angle=45, rotateP=testTape2.rotationPoint)
 
 # test case 11: angled tape + resin regions intersecting angled tape + resin regions
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
 # testTape1 = Tape(angle=-45)
 # testResin1 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=-45, rotateP=testTape1.rotationPoint)
@@ -549,26 +560,45 @@ class Undulation(Tape):
 #         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45, rotateP=testTape2.rotationPoint)
 
 # test case 12: two angled tape + (touching) resin regions intersecting angled tape + resin regions
-testTape1 = Tape(angle=-45)
+# PASS: mergebuffer: 1*10**-8, selfbuffer: 1*10**-8
+# testTape1 = Tape(angle=-45)
 # testResin1 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=-45, rotateP=testTape1.rotationPoint)
 # testResin2 = Resin(
 #         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=-45, rotateP=testTape1.rotationPoint)
-testTape2 = Tape(angle=45)
+# testTape2 = Tape(angle=45)
 # testResin3 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=45, rotateP=testTape2.rotationPoint)
 # testResin4 = Resin(
 #         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45, rotateP=testTape2.rotationPoint)
-testTape2 = Tape(angle=45)
-# testResin3 = Resin(
-#         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=45, rotateP=testTape2.rotationPoint)
-# testResin4 = Resin(
-#         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45, rotateP=testTape2.rotationPoint)
-testTape3 = Tape(coords=[(-100.0, -7.0), (100.0, -7.0), (100.0, -17.0), (-100.0, -17.0)], angle=45, rotateP=testTape2.rotationPoint)
+# testTape3 = Tape(coords=[(-100.0, -7.0), (100.0, -7.0), (100.0, -17.0), (-100.0, -17.0)], angle=45, rotateP=testTape2.rotationPoint)
 # testResin5 = Resin(
 #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -7.0), (-100.0, -7.0)], angle=45, rotateP=testTape2.rotationPoint)
 # testResin6 = Resin(
 #         coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -18.0), (-100.0, -18.0)], angle=45, rotateP=testTape2.rotationPoint)
+
+# test case 13: two angled tapes + resin regions crossing two angled tapes + resin regions
+testTape1 = Tape(angle=-45)
+testResin1 = Resin(
+        coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=-45, rotateP=testTape1.rotationPoint)
+testResin2 = Resin(
+        coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=-45, rotateP=testTape1.rotationPoint)
+testTape2 = Tape(coords=[(-100.0, -7.0), (100.0, -7.0), (100.0, -17.0), (-100.0, -17.0)], angle=-45, rotateP=testTape1.rotationPoint)
+testResin3 = Resin(
+        coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -7.0), (-100.0, -7.0)], angle=-45, rotateP=testTape2.rotationPoint)
+testResin4 = Resin(
+        coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -18.0), (-100.0, -18.0)], angle=-45, rotateP=testTape2.rotationPoint)
+testTape3 = Tape(angle=45)
+testResin5 = Resin(
+        coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=45, rotateP=testTape3.rotationPoint)
+testResin6 = Resin(
+        coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45, rotateP=testTape3.rotationPoint)
+testTape4 = Tape(coords=[(-100.0, -7.0), (100.0, -7.0), (100.0, -17.0), (-100.0, -17.0)], angle=45, rotateP=testTape3.rotationPoint)
+testResin7 = Resin(
+        coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -7.0), (-100.0, -7.0)], angle=45, rotateP=testTape4.rotationPoint)
+testResin8 = Resin(
+        coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -18.0), (-100.0, -18.0)], angle=45, rotateP=testTape4.rotationPoint)
+
 
 # -----------------------------------------------------------------------------
 # This section of the script only runs if this script is run directly (i.e. as

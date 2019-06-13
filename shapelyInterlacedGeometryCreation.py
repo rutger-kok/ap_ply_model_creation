@@ -6,39 +6,9 @@ from shapely.ops import cascaded_union
 from itertools import count
 from itertools import combinations
 from shapely.geometry import shape, JOIN_STYLE
-# define outside boundary of the impact specimen
-boundary = Polygon([(-50.0, -75.0), (50.0, -75.0), (50.0, 75.0), (-50.0, 75.0)])
 
-
-# import matplotlib.pyplot as plt
-# test1 = Polygon([(7.0, -75.0), (17.0, -75.0), (17.0, 75.0), (7.0, 75.0)])
-# xx, yy = test1.exterior.xy
-# test2 = Polygon([(-6.00000002, -6.00000001), (-13.07106783, -6.00000001), (-6.00000002, 1.0710678), (-6.00000002, -6.00000001)])
-# xx2, yy2 = test2.exterior.xy
-# test3 = Polygon([(1.0710678, -6.00000002), (-6.00000001, -13.07106783), (-6.00000001, -6.00000002), (1.0710678, -6.00000002)])
-# xx3, yy3 = test3.exterior.xy
-# test4 = Polygon([(5.0, 4.99999999), (5.0, 4.99999995), (5.00000001, 4.99999995), (5.00000001, 4.99999992), (5.00000001, 4.99999992), (5.00000001, 4.99999989), (5.00000001, 4.99999989), (5.00000001, -2.07106782), (2.07106784, -4.99999999), (-5.0, -4.99999999), (-5.0, -4.99999995), (-5.00000001, -4.99999995), (-5.00000001, -4.99999992), (-5.00000001, -4.99999992), (-5.00000001, -4.99999989), (-5.00000001, -4.99999989), (-5.00000001, 2.07106782), (-2.07106784, 4.99999999), (5.0, 4.99999999)])
-# xx4, yy4 = test4.exterior.xy
-# test5 = Polygon([(-1.0710678, 6.00000002), (6.00000001, 13.07106783), (6.00000001, 6.00000002), (-1.0710678, 6.00000002)])
-# xx5, yy5 = test5.exterior.xy
-# test6 = Polygon([(13.07106783, 6.00000001), (6.00000002, -1.0710678), (6.00000002, 6.00000001), (13.07106783, 6.00000001)])
-# xx6, yy6 = test6.exterior.xy
-# test7 = Polygon([(50.0, 42.92893219), (13.07106782, 6.00000001), (6.00000001, 6.00000001), (6.00000001, 13.07106782), (50.0, 57.07106781), (50.0, 42.92893219)])
-# xx7, yy7 = test7.exterior.xy
-# xb, yb = boundary.exterior.xy
-# plt.plot(xx,yy)
-# plt.plot(xx2,yy2)
-# plt.plot(xx3,yy3)
-# plt.plot(xx4,yy4)
-# plt.plot(xx5,yy5)
-# plt.plot(xx6,yy6)
-# plt.plot(xx7,yy7)
-# plt.plot(xb,yb)
-# plt.show()
-
-# define tape width and thickness
-w = 10.0
-t = 0.2
+# define specimen boundaries
+boundary = Polygon([(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1), (-50.0, 75.1)])
 
 def splitObject(differenceObject):
     splitCoords = []
@@ -58,7 +28,7 @@ def splitObject(differenceObject):
 
 def clean(coordinates):
     poly = Polygon(coordinates).buffer(0)
-    tol = 1*10**-8# distance
+    tol = 1*10**-8 # distance
     cf = 1.5  # cofactor
     cleaned = poly.buffer(-tol,join_style=2).buffer(
             tol*cf, join_style=2).intersection(poly).simplify(1*10**-10)
@@ -71,7 +41,7 @@ def clean(coordinates):
         
 
 class machinePass():
-    def __init__(self, angle=0, coords=None, resinW=1):
+    def __init__(self, angle=0, coords=None, resinW=1.0):
 
         self.tapeInstances = []
         self.otherInstances = []
@@ -140,30 +110,20 @@ class machinePass():
                         else: 
                             print 'cant clean'
         
+        self.tapeCtd= Polygon(coords).centroid
 
-        holla=[(coords[0][0], coords[0][1]),
-                     (coords[1][0], coords[1][1]),
-                     (coords[1][0],coords[1][1]-resinW),
-                     (coords[0][0], coords[0][1]-resinW)]
-        print holla
-        yo = [(coords[2][0], coords[2][1]),
-                     (coords[3][0], coords[3][1]),
-                     (coords[3][0],coords[3][1]+resinW),
-                     (coords[2][0], coords[2][1]+resinW)]
-        print yo
-        
-        # create accompanying resin regions
-        resinCoordsTop = Resin(
-                coords=[(coords[0][0], coords[0][1]),
-                     (coords[1][0], coords[1][1]),
-                     (coords[1][0],coords[1][1]-resinW),
-                     (coords[0][0], coords[0][1]-resinW)], angle=angle)
+        # # create accompanying resin regions
+        # resinCoordsTop = Resin(
+        #         coords=[(coords[0][0], coords[0][1]),
+        #              (coords[1][0], coords[1][1]),
+        #              (coords[1][0],coords[1][1]-resinW),
+        #              (coords[0][0], coords[0][1]-resinW)], angle=angle, rPoint=tapeCentroid)
 
-        resinCoordsBottom = Resin(
-                coords=[(coords[2][0], coords[2][1]),
-                     (coords[3][0], coords[3][1]),
-                     (coords[3][0],coords[3][1]+resinW),
-                     (coords[2][0], coords[2][1]+resinW)], angle=angle)
+        # resinCoordsBottom = Resin(
+        #         coords=[(coords[2][0], coords[2][1]),
+        #              (coords[3][0], coords[3][1]),
+        #              (coords[3][0],coords[3][1]+resinW),
+        #              (coords[2][0], coords[2][1]+resinW)], angle=angle, rPoint=tapeCentroid)
 
 
 # defines the Tape class, which is a subclass of the Shapely Polygon class.
@@ -247,16 +207,23 @@ class Tape(Polygon):
                     passNum.tapeInstances.append(self)
 
     def createObject(self, angle=0, coords=None ,layer=1,
-            angleLabel=None, rotationPoint=None):
+            angleLabel=None, rPoint=None):
 
         a = Polygon(coords)
-        b = affinity.rotate(a, angle, origin=Point(0,0))
+        if rPoint == None:
+            rPoint = a.centroid  
+        b = affinity.rotate(a, angle, origin=rPoint)
         c = b.intersection(boundary) # trim tape using boundary
-        x0r = map(lambda x: round(x, 8), c.exterior.xy[0]) 
-        y0r = map(lambda x: round(x, 8), c.exterior.xy[1])
-        new_coords = zip(x0r,y0r)
-        # new_coords = zip(c.exterior.xy[0],c.exterior.xy[1])
-        Polygon.__init__(self,new_coords) # initialize rotated tape
+        # if c and not c.is_empty:
+        try:
+            x0r = map(lambda x: round(x, 8), c.exterior.xy[0]) 
+            y0r = map(lambda x: round(x, 8), c.exterior.xy[1])
+            new_coords = zip(x0r,y0r)
+            # new_coords = zip(c.exterior.xy[0],c.exterior.xy[1])
+            Polygon.__init__(self,new_coords) # initialize rotated tape
+        except AttributeError:
+            print b.exterior.xy
+            print 'Attribute Error in createObject'
 
         # object parameters
         self.coordinates = new_coords  
@@ -294,6 +261,7 @@ class Tape(Polygon):
             mergedObj = cascaded_union(validObjectList).buffer(1*10**-8, join_style=2)
             selfBuffer = self.buffer(1*10**-8, join_style=2)
             intersectObj = selfBuffer.intersection(mergedObj).buffer(0)
+            differenceObj = self.buffer(0).difference(intersectObj)
             if intersectObj and not intersectObj.is_empty:
                 # different behaviour depending on whether the intersection
                 # creates multiple intersecting regions or only one
@@ -301,12 +269,10 @@ class Tape(Polygon):
                     for plygn in intersectObj:
                         intersectCoords.append(
                                 zip(plygn.exterior.xy[0], plygn.exterior.xy[1]))
-                        differenceObj = self.difference(intersectObj)
                 elif intersectObj.geom_type == 'Polygon':
                     intersectCoords.append(
                             zip(intersectObj.exterior.xy[0], 
                             intersectObj.exterior.xy[1]))
-                    differenceObj = self.buffer(0).difference(intersectObj)
                 else:
                     print 'Not a polygon or multipolygon'     
         return intersectCoords, differenceObj
@@ -326,9 +292,9 @@ class Resin(Tape):
     _instances = []
 
     def __init__(self, angle=0, coords=None , layer=1, angleLabel=None,
-            check=True):
+            check=True, rPoint=None):
 
-        self.createObject(angle, coords, layer, angleLabel)
+        self.createObject(angle, coords, layer, angleLabel, rPoint)
 
         if check:
             allObjInLayer = list(list(Tape.getinstances(self.layer)) + 
@@ -468,6 +434,13 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     # Plotting of regions
 
+    # define tape width and thickness
+    w = 10.0
+    t = 0.2
+
+    # define outside boundary of the impact specimen
+    boundary = Polygon([(-50.0, -75.0), (50.0, -75.0), (50.0, 75.0), (-50.0, 75.0)])
+
     # NOTE when specifying coordinates must move clockwise from top-left!
 
     # test case 1: two tapes and resin (touching) crossing tape and resin
@@ -554,6 +527,29 @@ if __name__ == '__main__':
     #         coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -18.0), (-100.0, -18.0)], angle=45)
 
     # test case 13: two angled tapes + resin regions crossing two angled tapes + resin regions
+    # testTape1 = machinePass(angle=-45)
+    # testResin1 = Resin(
+    #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=-45)
+    # testResin2 = Resin(
+    #         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=-45)
+    # testTape2 = machinePass(coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -7.0), (-100.0, -7.0)], angle=-45)
+    # testResin3 = Resin(
+    #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -7.0), (-100.0, -7.0)], angle=-45)
+    # testResin4 = Resin(
+    #         coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -18.0), (-100.0, -18.0)], angle=-45)
+    # testTape3 = machinePass(angle=45)
+    # testResin5 = Resin(
+    #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=45)
+    # testResin6 = Resin(
+    #         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45)
+    # testTape4 = machinePass(coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -7.0), (-100.0, -7.0)], angle=45)
+    # testResin7 = Resin(
+    #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -7.0), (-100.0, -7.0)], angle=45)
+    # testResin8 = Resin(
+    #         coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -18.0), (-100.0, -18.0)], angle=45)
+
+
+    # test case 13: two angled tapes + resin regions crossing two angled tapes + resin regions
     testTape1 = machinePass(angle=-45)
     # testResin1 = Resin(
     #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=-45)
@@ -564,12 +560,12 @@ if __name__ == '__main__':
     #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -7.0), (-100.0, -7.0)], angle=-45)
     # testResin4 = Resin(
     #         coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -18.0), (-100.0, -18.0)], angle=-45)
-    testTape3 = machinePass(angle=45)
+    # testTape3 = machinePass(angle=45)
     # testResin5 = Resin(
     #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -5.0), (-100.0, -5.0)], angle=45)
     # testResin6 = Resin(
     #         coords=[(-100.0, 6.0), (100.0, 6.0), (100.0, 5.0), (-100.0, 5.0)], angle=45)
-    testTape4 = machinePass(coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -7.0), (-100.0, -7.0)], angle=45)
+    # testTape4 = machinePass(coords=[(-100.0, -17.0), (100.0, -17.0), (100.0, -7.0), (-100.0, -7.0)], angle=45)
     # testResin7 = Resin(
     #         coords=[(-100.0, -6.0), (100.0, -6.0), (100.0, -7.0), (-100.0, -7.0)], angle=45)
     # testResin8 = Resin(

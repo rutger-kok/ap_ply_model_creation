@@ -1,28 +1,28 @@
 from shapely.geometry import Polygon, Point, LineString, JOIN_STYLE
 from shapely import affinity
 from shapely.ops import cascaded_union, split, linemerge, unary_union, polygonize
-from shapely.strtree import STRtree
-from itertools import count, combinations
 from copy import deepcopy
 import numpy as np
 import math
 import matplotlib.pyplot as plt
-import sys
 
 # ----------------------------------------------------------------------------
 # Function to plot object types by layer
 
-def objPlot(typ):
+def objPlot(grid, typ, sample=None):
+    # define specimen boundaries
+    if sample == None:
+        sample = Polygon(
+            [(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1), (-50.0, 75.1)])
     f1, axes = plt.subplots(3, 3, sharex='col', sharey='row')
     f1.suptitle('{} per Layer'.format(typ))
 
     g = 0
     for i in range(3):
         for j in range(3):
-            if g <= len(grids)-1:
-                tapesInLayer = cascaded_union(
-                    [tape for (m,tape) 
-                        in grids[g].iteritems()
+            if g <= len(grid)-1:
+                tapesInLayer = cascaded_union([tape for (m,tape) 
+                        in grid[g].iteritems()
                         if tape.objectType == typ])
                 if tapesInLayer.geom_type == 'Polygon':
                     xi,yi = tapesInLayer.exterior.xy
@@ -41,12 +41,6 @@ def objPlot(typ):
     plt.show(f1)
 
 # ----------------------------------------------------------------------------
-# Define polygon boundaries
-sample = Polygon([(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1), (-50.0, 75.1)])
-
-# Define tape width and thickness
-w = 10.0
-t = 0.2
 
 # initialize additional polygon attributes
 setattr(Polygon, 'objectType', 'Polygon')
@@ -119,8 +113,6 @@ def createGrids(tapeAngles, tapeWidths, r=1.0, sample=None):
     layerGrids = [deepcopy(polyDict) for l in range(len(tapeAngles))]
     return layerGrids
 
-grids = createGrids(tapeAngles=(0,90,45), tapeWidths=(10,10,10))
-
 # for poly in grids[0]:
 #     x,y = poly.exterior.xy
 #     plt.plot(x,y)
@@ -132,16 +124,17 @@ grids = createGrids(tapeAngles=(0,90,45), tapeWidths=(10,10,10))
 # NOTE: a pass should be specified using its coordinates when horizontal 
 # and then rotated. Do not rotate outside of the machinePass class
 class machinePass():
-    def __init__(self, grids, layerNum=1, angle=0, coords=None, resinW=1.0):
-        self.layer = layerNum
+    def __init__(self, grids, lNum=1, angle=0, coords=None, resinW=1.0):
+        self.layer = lNum
         self.angle = angle
         if coords == None:
+            w = 10.0
             self.coords = (
                     [(-100.0, w/2), (100.0, w/2), (100.0, -w/2), (-100.0, -w/2)]
                     )
         else:
             self.coords = coords
-
+        
         bounds = Polygon(self.coords)
         rotatedBounds = affinity.rotate(
                 bounds, self.angle).buffer(1*10**-8, join_style=2)
@@ -154,6 +147,7 @@ class machinePass():
                     key = lambda x: (round(x[1].centroid.coords[0][0],6),
                         round(x[1].centroid.coords[0][1],6)))
 
+        # lift up overlapping regions
         for index in range(len(self.tapePath)):
             i, obj = self.tapePath[index]
             if obj.objectType == 'Polygon':
@@ -170,6 +164,7 @@ class machinePass():
                     else: continue 
             else: continue
 
+        # define undulation regions
         objByLayer = [[(ii,obj2) for (ii,obj2) 
                         in self.tapePath if obj2.layer == s] for s 
                         in range(1,len(grids)+1)]
@@ -196,7 +191,7 @@ class machinePass():
                         cellBottom.angle.append(self.angle)
                         cellBottom.layer = n+1
 
-        # create resin regions
+        # create bordering resin regions
         self.tapeCentroid= bounds.centroid
         if self.angle == 90:
             # specified clockwise
@@ -234,6 +229,7 @@ class machinePass():
                                 in grids[self.layer-1].iteritems() 
                                 if plygn.within(resinBounds)]
 
+        # lift up overlapping resin regions
         for index3 in range(len(self.resinRegions)):
             iii, obj3 = self.resinRegions[index3]
             if obj3.objectType == 'Polygon':
@@ -249,7 +245,7 @@ class machinePass():
                     else: continue 
     
     def __str__(self):
-        return 'MachinePass: Angle = {}'.format(self.angle)
+        return 'MachinePass: Width = {} Angle = {}'.format(self.w, self.angle)
 
 # -----------------------------------------------------------------------------
 # This section of the script only runs if this script is run directly (i.e. as
@@ -257,13 +253,15 @@ class machinePass():
 # purposes.
 
 if __name__ == '__main__':
+    grids = createGrids(tapeAngles=(0,90,45), tapeWidths=(10,10,10))
+
     machinePass(grids)
     machinePass(grids, angle=90)
     machinePass(grids, angle=45)
 
-    objPlot('Tape')
-    objPlot('Resin')
-    objPlot('Undulation')
+    objPlot(grids, 'Tape')
+    objPlot(grids, 'Resin')
+    objPlot(grids, 'Undulation')
 # ------------------------------------------------------------------------
 
     

@@ -1,4 +1,4 @@
-from shapely.geometry import Polygon, Point, LineString, shape, JOIN_STYLE, MultiLineString
+from shapely.geometry import Polygon, Point, LineString, JOIN_STYLE
 from shapely import affinity
 from shapely.ops import cascaded_union, split, linemerge, unary_union, polygonize
 from shapely.strtree import STRtree
@@ -9,8 +9,42 @@ import math
 import matplotlib.pyplot as plt
 import sys
 
+# ----------------------------------------------------------------------------
+# Function to plot object types by layer
+
+def objPlot(typ):
+    f1, axes = plt.subplots(3, 3, sharex='col', sharey='row')
+    f1.suptitle('{} per Layer'.format(typ))
+
+    g = 0
+    for i in range(3):
+        for j in range(3):
+            if g <= len(grids)-1:
+                tapesInLayer = cascaded_union(
+                    [tape for (m,tape) 
+                        in grids[g].iteritems()
+                        if tape.objectType == typ])
+                if tapesInLayer.geom_type == 'Polygon':
+                    xi,yi = tapesInLayer.exterior.xy
+                    axes[i,j].plot(xi,yi)
+                    axes[i,j].set_title('Layer: {}'.format(g))
+                elif tapesInLayer.geom_type == 'MultiPolygon':
+                    for t in tapesInLayer:
+                        xi,yi = t.exterior.xy
+                        axes[i,j].plot(xi,yi)
+                axes[i,j].set_title('Layer: {}'.format(g))
+                xb, yb = sample.exterior.xy
+                axes[i,j].plot(xb,yb)
+                g += 1
+            else:
+                break
+    plt.show(f1)
+
+# ----------------------------------------------------------------------------
+# Define polygon boundaries
 sample = Polygon([(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1), (-50.0, 75.1)])
 
+# Define tape width and thickness
 w = 10.0
 t = 0.2
 
@@ -19,10 +53,13 @@ setattr(Polygon, 'objectType', 'Polygon')
 setattr(Polygon, 'angle', []) # create attribute in Polygon class
 setattr(Polygon, 'layer', 1) # create attribute in Polygon class
 
+# Function to partition the specimen into a grid of polygons depending on the 
+# tape angles of the laminate
 def createGrids(tapeAngles, tapeWidths, r=1.0, sample=None):
     # define specimen boundaries
     if sample == None:
-        sample = Polygon([(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1), (-50.0, 75.1)])
+        sample = Polygon(
+            [(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1), (-50.0, 75.1)])
     
     tapes = zip(tapeAngles, tapeWidths)
     partitionLines = []
@@ -33,7 +70,8 @@ def createGrids(tapeAngles, tapeWidths, r=1.0, sample=None):
             offset = (w+2*r)
             maxOffset = 50.0-w/2.0
             numberOffsets = int(maxOffset/offset)
-            offsetList = [offset*k for k in range(-numberOffsets-1,numberOffsets+1)]
+            offsetList = [offset*k for k 
+                            in range(-numberOffsets-1,numberOffsets+1)]
             for os in offsetList:
                 tapeLineCoords = [((w/2.0)+os, 100.0), ((w/2.0)+os, -100.0)]
                 resinLineCoords1 = (
@@ -53,7 +91,8 @@ def createGrids(tapeAngles, tapeWidths, r=1.0, sample=None):
             maxOffset = (75.0 - (w/2.0)*math.cos(math.radians(a))
                     + 50.0*math.tan(math.radians(a)))
             numberOffsets = int(maxOffset/offset)
-            offsetList = [offset*k for k in range(-numberOffsets-1,numberOffsets+1)]
+            offsetList = [offset*k for k 
+                            in range(-numberOffsets-1,numberOffsets+1)]
             for os in offsetList:
                 tapeLineCoords = [(-100.0, (w/2.0)+os), (100.0, (w/2.0)+os)]
                 resinLineCoords1 = (
@@ -61,12 +100,17 @@ def createGrids(tapeAngles, tapeWidths, r=1.0, sample=None):
                 resinLineCoords2 = (
                         [(-100.0, (w/2.0)+os+2*r), (100.0, (w/2.0)+os+2*r)])
                 rotPoint = Point([(0.0, os), (0.0, os)])
-                tapeLine = affinity.rotate(LineString(tapeLineCoords), a, rotPoint)
-                resinLine1 = affinity.rotate(LineString(resinLineCoords1), a, rotPoint)
-                resinLine2 = affinity.rotate(LineString(resinLineCoords2), a, rotPoint)
+                tapeLine = affinity.rotate(
+                    LineString(tapeLineCoords), a, rotPoint)
+                resinLine1 = affinity.rotate(
+                    LineString(resinLineCoords1), a, rotPoint)
+                resinLine2 = affinity.rotate(
+                    LineString(resinLineCoords2), a, rotPoint)
                 partitionLines.extend([tapeLine, resinLine1, resinLine2])
 
-    partitionLines.append(sample.boundary) # collection of individual linestrings for splitting in a list and add the polygon lines to it.
+    # collection of individual linestrings for splitting in a list and add 
+    # the polygon lines to it.
+    partitionLines.append(sample.boundary) 
     merged_lines = linemerge(partitionLines)
     border_lines = unary_union(merged_lines)
     decomposition = polygonize(border_lines)     
@@ -83,6 +127,10 @@ grids = createGrids(tapeAngles=(0,90,45), tapeWidths=(10,10,10))
 #     plt.grid(True)
 # plt.show()
 
+# Class defining a single pass of a an ATP machine
+# inputs: grid of the specimen, angle of the pass, coords, width of resin
+# NOTE: a pass should be specified using its coordinates when horizontal 
+# and then rotated. Do not rotate outside of the machinePass class
 class machinePass():
     def __init__(self, grids, layerNum=1, angle=0, coords=None, resinW=1.0):
         self.layer = layerNum
@@ -95,9 +143,12 @@ class machinePass():
             self.coords = coords
 
         bounds = Polygon(self.coords)
-        rotatedBounds = affinity.rotate(bounds, self.angle).buffer(1*10**-8, join_style=2)
+        rotatedBounds = affinity.rotate(
+                bounds, self.angle).buffer(1*10**-8, join_style=2)
 
-        tapeRegions = [(i, plygn) for (i,plygn) in grids[self.layer-1].iteritems() if plygn.within(rotatedBounds)]
+        tapeRegions = [(i, plygn) for (i,plygn) 
+                            in grids[self.layer-1].iteritems() 
+                            if plygn.within(rotatedBounds)]
         self.tapePath = sorted(
                     tapeRegions,
                     key = lambda x: (round(x[1].centroid.coords[0][0],6),
@@ -119,14 +170,17 @@ class machinePass():
                     else: continue 
             else: continue
 
-        objByLayer = [[(ii,obj2) for (ii,obj2) in self.tapePath if obj2.layer == s] for s in range(1,len(grids)+1)]
+        objByLayer = [[(ii,obj2) for (ii,obj2) 
+                        in self.tapePath if obj2.layer == s] for s 
+                        in range(1,len(grids)+1)]
         for n in range(len(objByLayer)-1):
-            mergedLayer1 = cascaded_union([obj5 for (obj5ID, obj5) in objByLayer[n]])
+            mergedLayer1 = cascaded_union(
+                [obj5 for (obj5ID, obj5) in objByLayer[n]])
             layer2 = objByLayer[n+1]
-            touches = [(objID, obj4) for (objID, obj4) in layer2 if obj4.touches(mergedLayer1)]
+            touches = [(objID, obj4) for (objID, obj4) 
+                            in layer2 
+                            if obj4.touches(mergedLayer1)]
             for (objid, obj5) in touches:
-                    # xx,yy = obj5.exterior.xy
-                    # plt.plot(xx,yy)
                     cellTop = grids[n+1][objid]
                     cellBottom = grids[n][objid]
                     if cellTop.objectType == 'Undulation':
@@ -141,10 +195,6 @@ class machinePass():
                         cellBottom.objectType = 'Undulation'
                         cellBottom.angle.append(self.angle)
                         cellBottom.layer = n+1
-            # xs,ys = sample.exterior.xy
-            # plt.plot(xs,ys)
-            # plt.title('{},{}'.format(self,n))
-            # plt.show()
 
         # create resin regions
         self.tapeCentroid= bounds.centroid
@@ -173,10 +223,16 @@ class machinePass():
                         (self.coords[3][0], self.coords[3][1]),
                         (self.coords[3][0],self.coords[3][1]-resinW),
                         (self.coords[2][0], self.coords[2][1]-resinW)])
-            resinTopRotated = affinity.rotate(resinTop, self.angle, self.tapeCentroid)
-            resinBottomRotated = affinity.rotate(resinBottom, self.angle, self.tapeCentroid)
-        resinBounds = cascaded_union([resinTopRotated,resinBottomRotated]).buffer(1*10**-8, join_style=2)
-        self.resinRegions = [(i,plygn) for (i,plygn) in grids[self.layer-1].iteritems() if plygn.within(resinBounds)]
+            resinTopRotated = affinity.rotate(
+                resinTop, self.angle, self.tapeCentroid)
+            resinBottomRotated = affinity.rotate(
+                resinBottom, self.angle, self.tapeCentroid)
+        resinBounds = cascaded_union(
+            [resinTopRotated,resinBottomRotated]).buffer(
+                1*10**-8, join_style=2)
+        self.resinRegions = [(i,plygn) for (i,plygn) 
+                                in grids[self.layer-1].iteritems() 
+                                if plygn.within(resinBounds)]
 
         for index3 in range(len(self.resinRegions)):
             iii, obj3 = self.resinRegions[index3]
@@ -195,74 +251,22 @@ class machinePass():
     def __str__(self):
         return 'MachinePass: Angle = {}'.format(self.angle)
 
-# # -----------------------------------------------------------------------------
-# # This section of the script only runs if this script is run directly (i.e. as
-# # long as this script is not imported). It plots the geometries for testing
-# # purposes.
+# -----------------------------------------------------------------------------
+# This section of the script only runs if this script is run directly (i.e. as
+# long as this script is not imported). It plots the geometries for testing
+# purposes.
 
 if __name__ == '__main__':
     machinePass(grids)
     machinePass(grids, angle=90)
     machinePass(grids, angle=45)
 
-    print len(grids[0])
-    print len(grids[1])
-    # ------------------------------------------------------------------------
+    objPlot('Tape')
+    objPlot('Resin')
+    objPlot('Undulation')
+# ------------------------------------------------------------------------
 
-    f1, axes = plt.subplots(3, 3, sharex='col', sharey='row')
-    f1.suptitle('Undulation per Layer')
+    
 
-    g = 0
-    for i in range(3):
-        for j in range(3):
-            if g <= len(grids)-1:
-                tapesInLayer = [(m,tape) for (m,tape) in grids[g].iteritems() if tape.objectType == 'Undulation']
-                for k,t in tapesInLayer:
-                    xi,yi = t.exterior.xy
-                    axes[i,j].plot(xi,yi)
-                    axes[i,j].set_title('Layer: {}'.format(g))
-                xb, yb = sample.exterior.xy
-                axes[i,j].plot(xb,yb)
-                g += 1
-            else:
-                break
 
-    f2, axes = plt.subplots(3, 3, sharex='col', sharey='row')
-    f2.suptitle('Tape per Layer')
-    g = 0
-    for i in range(3):
-        for j in range(3):
-            if g <= len(grids)-1:
-                tapesInLayer = [(m,tape) for (m,tape) in grids[g].iteritems() if tape.objectType == 'Tape']
-                for k, t in tapesInLayer:
-                    xi,yi = t.exterior.xy
-                    axes[i,j].plot(xi,yi)
-                    axes[i,j].set_title('Layer: {}'.format(g))
-                xb, yb = sample.exterior.xy
-                axes[i,j].plot(xb,yb)
-                g += 1
-            else:
-                break
-
-    f3, axes = plt.subplots(3, 3, sharex='col', sharey='row')
-    f3.suptitle('Resin per Layer')
-
-    g = 0
-    for i in range(3):
-        for j in range(3):
-            if g <= len(grids)-1:
-                tapesInLayer = [(m,tape) for (m,tape) in grids[g].iteritems() if tape.objectType == 'Resin']
-                for k, t in tapesInLayer:
-                    xi,yi = t.exterior.xy
-                    axes[i,j].plot(xi,yi)
-                    axes[i,j].set_title('Layer: {}'.format(g))
-                xb, yb = sample.exterior.xy
-                axes[i,j].plot(xb,yb)
-                g += 1
-            else:
-                break
-
-    # plt.show(f1)
-    plt.show(f2)
-    plt.show(f3)
     

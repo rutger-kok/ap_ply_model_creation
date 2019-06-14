@@ -1,6 +1,6 @@
 import numpy as np 
 import math 
-import sigc3 as sigc
+import sigc4 as sigc
 from shapely.geometry import Polygon
 
 '''
@@ -34,7 +34,7 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing, r=1.0):
                 maxOffset = 50.0+r+w/2.0
                 numberOffsets = int(maxOffset/spacedOffset)
                 offsetList = [spacedOffset*k for k 
-                    in range(-numberOffsets-numShift,numberOffsets+2-numShift)]
+                    in range(-numberOffsets-numShift,numberOffsets+3-numShift)]
                 shift = numShift*offset
                 for os in offsetList:
                     tapeCoords = (
@@ -52,7 +52,7 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing, r=1.0):
                         + 50.0*math.tan(math.radians(a)))
                 numberOffsets = int(maxOffset/spacedOffset)
                 offsetList = [spacedOffset*k for k 
-                    in range(-numberOffsets-numShift,numberOffsets+2-numShift)]
+                    in range(-numberOffsets-numShift,numberOffsets+3-numShift)]
                 shift = numShift*offset
                 for os in offsetList:
                     tapeCoords = (
@@ -75,7 +75,6 @@ if __name__ == '__main__':
     # define tape width and thickness
     grid1 = sigc.createGrids(tapeAngles=(0,90), tapeWidths=(20,20))
     tapePaths = laminateCreation(grid1, tapeAngles=(0,90), tapeWidths=(20,20), tapeSpacing=2)
-    print type(tapePaths)
     # print grid1
     # sigc.objPlot(grid1,(0,90), 'Tape')
     # sigc.objPlot(grid1, (0,90), 'Undulation')

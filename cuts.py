@@ -25,3 +25,45 @@
 # plt.plot(xx7,yy7)
 # plt.plot(xb,yb)
 # plt.show()
+
+# def surfacePairs():
+# allInstances = laminateAssembly.instances.values()
+# laminateAssembly.InstanceFromBooleanMerge(name='Merge All',
+#         instances=allInstances, keepIntersections=ON, originalInstances=DELETE, 
+#         mergeNodes=ALL, nodeMergingTolerance=1e-06, domain=BOTH)
+#     allFaces = laminateAssembly.instances['Merge All-1'].faces[:]
+#     pairs = {}
+#     for face in allFaces:
+#         currentFaceID = face.index
+#         currentCoords = face.pointOn[0]
+#         adjFaceObjs = face.getAdjacentFaces()
+#         adjFaceIDs = [f.index for f in adjFaceObjs]
+#         adjFaceCoords = [f.pointOn[0] for f in adjFaceObjs]
+#         adjFaces = zip(adjFaceIDs,adjFaceCoords)
+#         for (adjFID, adjFCoords) in adjFaces:
+#             if (currentFaceID, adjFID) not in pairs.keys() and (adjFID, currentFaceID) not in pairs.keys():
+#                 pairs[(currentFaceID,adjFID)] = (currentCoords, adjFCoords)
+#             else: continue 
+#     return pairs
+
+# def createCohesivePairs():
+# for (pairIDs, pairCoords) in pp.iteritems():
+#     face1 = [inst.faces.findAt((pairCoords[0], )) for inst
+#             in laminateAssembly.instances.values() 
+#             if inst.faces.findAt(pairCoords[0], )]
+#     face2 = [inst.faces.findAt((pairCoords[1], )) for inst
+#             in laminateAssembly.instances.values() 
+#             if inst.faces.findAt(pairCoords[1], )]
+#     faceSet = []
+#     for ff in face1+face2:
+#         if ff not in faceSet:
+#             faceSet.append(ff)
+#     faceRegion1 = laminateAssembly.Surface(side1Faces=faceSet[0], name='Face {}'.format(pairIDs[0]))
+#     faceRegion2 = laminateAssembly.Surface(side1Faces=faceSet[1], name='Face {}'.format(pairIDs[1]))
+#     if len(faceSet) > 2:
+#         print 'Error - more than 2 faces in pair'
+#     laminateModel.SurfaceToSurfaceContactExp(name ='Coh {}-{}'.format(pairIDs[0], pairIDs[1]), 
+#         createStepName='Initial', master = faceRegion1, slave = faceRegion2, 
+#         mechanicalConstraint=KINEMATIC, sliding=FINITE, 
+#         interactionProperty='Cohesive Surface', initialClearance=OMIT, 
+#         datumAxis=None, clearanceRegion=None)

@@ -66,6 +66,7 @@ def rotateMatProps(E_11, E_22, nu_12, nu_23, G_12, G_23, angle):
             (0.0, 0.0, 0.0, 0.0, 0.0, S66)])
 
     C_lamina = np.linalg.inv(S_lamina)
+    print C_lamina
     S_rotated = np.linalg.inv(rotateLaminaStiffness(C_lamina, angle))
     matprops_rotated = engineeringConstants(S_rotated)
 
@@ -73,5 +74,6 @@ def rotateMatProps(E_11, E_22, nu_12, nu_23, G_12, G_23, angle):
 
 if __name__ == '__main__':
     print 'Testing'
-    print rotateMatProps(125.0, 8.56, 0.32, 0.23, 6.47, 4.5, 90.0)
-    print rotateMatProps(140.40, 11.61, 0.289, 0.299, 6.47, 4.38, 45)
+    print rotateMatProps(161.0, 11.4, 0.32, 0.436, 5.29, 3.98, 0.0)
+    # print rotateMatProps(125.0, 8.56, 0.32, 0.23, 6.47, 4.5, 90.0)
+    # print rotateMatProps(140.40, 11.61, 0.289, 0.299, 6.47, 4.38, 45)

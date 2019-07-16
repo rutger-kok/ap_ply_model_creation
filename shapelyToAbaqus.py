@@ -28,14 +28,14 @@ laminateAssembly = laminateModel.rootAssembly
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model geometry
 # Create geometries using shapely
-t = 0.2  # layer thickness 
-laminateAngles = (45,-45)  # define angles of tapes in laminate
+t = 2.0  # layer thickness 
+laminateAngles = (0,90)  # define angles of tapes in laminate
 partTypes = ['Tape', 'Resin', 'Undulation']
 # create grid using shapely
-partGrid = sigc.createGrids(tapeAngles=laminateAngles, tapeWidths=(20,20))
+partGrid = sigc.createGrids(tapeAngles=laminateAngles, tapeWidths=(25,25))
 # identify parts in grid
 tapePaths = tp.laminateCreation(
-    partGrid, tapeAngles=laminateAngles, tapeWidths=(20,20), tapeSpacing=1)
+    partGrid, tapeAngles=laminateAngles, tapeWidths=(25,25), tapeSpacing=1)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Set global parameters
@@ -67,18 +67,23 @@ laminateModel.materials['Resin'].Elastic(type=ENGINEERING_CONSTANTS,
 resinSection = laminateModel.HomogeneousSolidSection(
         name='Resin Section', material='Resin')
 
-laminateModel.ContactProperty('Cohesive')
-laminateModel.interactionProperties['Cohesive'].CohesiveBehavior(
-    defaultPenalties=OFF, table=((2900.0, 2900.0, 2900.0), ))
-laminateModel.interactionProperties['Cohesive'].Damage(initTable=((
-    0.06, 0.06, 0.06), ), useEvolution=ON, evolutionType=ENERGY, 
-    evolTable=((0.000352, ), ))
+# # implicit
+# # create step
+# laminateModel.StaticStep(name='Loading Step', previous='Initial')
+# laminateModel.ContactProperty('Cohesive')
+# laminateModel.interactionProperties['Cohesive'].CohesiveBehavior(
+#     defaultPenalties=OFF, table=((2900.0, 2900.0, 2900.0), ))
+# laminateModel.interactionProperties['Cohesive'].Damage(initTable=((
+#     0.06, 0.06, 0.06), ), useEvolution=ON, evolutionType=ENERGY, 
+#     evolTable=((0.000352, ), ))
 
+
+# explicit
 # create step
-laminateModel.StaticStep(name='Loading Step', previous='Initial')
-# laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial')
+laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial')
 
-# IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
+
+# # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Generate parts
 
 # This function is used to create parts using the geometric info from Shapely
@@ -210,46 +215,37 @@ for (pathNumber, tapePath) in enumerate(tapePaths):
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Create cohesive zone interactions between faces of the assembly
 
-# def createCohInt(): 
-#     allInstances = laminateAssembly.instances.values()
-#     laminateAssembly.InstanceFromBooleanMerge(name='Merge All',
-#             instances=allInstances, keepIntersections=ON,
-#             originalInstances=SUPPRESS, mergeNodes=ALL, 
-#             nodeMergingTolerance=1e-06, domain=BOTH)
-#     allCells = laminateAssembly.instances['Merge All-1'].cells[:]
-#     allFaces = laminateAssembly.instances['Merge All-1'].faces[:]
-#     faceCoords = []
-#     for currentCell in allCells:
-#         adjCells = currentCell.getAdjacentCells()
-#         currentCellFaces = currentCell.getFaces()
-#         adjCellFaces = [(c.getFaces()) for c in adjCells]
-#         facePairs = []
-#         for adjCellFaceList in adjCellFaces:
-#             commonFaceID = list(
-#                 set(adjCellFaceList).intersection(currentCellFaces))[0]
-#             commonFaceCoords = [x.pointOn[0] for x 
-#                     in allFaces
-#                     if x.index == commonFaceID][0]
-#             faceCoords.append(commonFaceCoords)
+laminateModel.ContactProperty('Tangential')
+laminateModel.interactionProperties['Tangential'].TangentialBehavior(
+    formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
+    pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
+    table=((0.15, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
+    fraction=0.005, elasticSlipStiffness=None)
+laminateModel.ContactProperty('Cohesive')
+laminateModel.interactionProperties['Cohesive'].CohesiveBehavior()
+laminateModel.interactionProperties['Cohesive'].Damage(initTable=((
+    1.0, 2.0, 3.0), ), evolTable=())
 
-#     del laminateAssembly.features['Merge All-1']
-#     for key in laminateAssembly.instances.keys():
-#         laminateAssembly.resumeFeatures((key, ))
+# # implicit
+# laminateModel.contactDetection(defaultType=CONTACT,
+#         interactionProperty='Cohesive')
 
-#     for (ind, fCoords) in enumerate(faceCoords):
-#         faceObjs = [inst.faces.findAt((fCoords, )) for inst
-#                 in laminateAssembly.instances.values() 
-#                 if inst.faces.findAt((fCoords, ))]
-#         if len(faceObjs) != 2:
-#             print 'Error no 2 faces'
-#         faceRegion1 = laminateAssembly.Surface(
-#             side1Faces=faceObjs[0], name='Face {}-1'.format(ind))
-#         faceRegion2 = laminateAssembly.Surface(
-#             side1Faces=faceObjs[1], name='Face {}-2'.format(ind))
-#         laminateModel.interactions['General Contact'].contactPropertyAssignments.appendInStep(
-#             stepName='Loading Step', assignments=((faceRegion1, faceRegion2, 'Cohesive'), ))
-
-# createCohInt()    
+# explicit
+# determine contacts
+laminateModel.contactDetection(defaultType=CONTACT,
+    interactionProperty='Cohesive', nameEachSurfaceFound=OFF,
+    createUnionOfMasterSurfaces=ON, createUnionOfSlaveSurfaces=ON)
+# delete interactions
+for interact in laminateModel.interactions.values():
+    del laminateModel.interactions['{}'.format(interact.name)]
+allMaster = laminateAssembly.surfaces['CP-All-m']
+allSlave = laminateAssembly.surfaces['CP-All-s']
+laminateModel.ContactExp(name='General Contact', createStepName='Initial')
+laminateModel.interactions['General Contact'].includedPairs.setValuesInStep(
+    stepName='Initial', useAllstar=ON)
+laminateModel.interactions['General Contact'].contactPropertyAssignments.appendInStep(
+    stepName='Initial', assignments=((GLOBAL, SELF, 'Tangential'),
+    (allMaster, allSlave, 'Cohesive')))
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Apply boundary conditions
@@ -304,20 +300,3 @@ laminateModel.DisplacementBC(
             fieldName='', localCsys=None)
 
 
-# ----------------------------------------------------------------------------
-# Cuts for explicit
-
-# # create interaction (general explicit)
-# laminateModel.ContactExp(name='General Contact', createStepName='Loading Step')
-# laminateModel.interactions['General Contact'].includedPairs.setValuesInStep(
-#     stepName='Loading Step', useAllstar=ON)
-# laminateModel.interactions['General Contact'].contactPropertyAssignments.appendInStep(
-#     stepName='Loading Step', assignments=((GLOBAL, SELF, 'Hard Contact'), ))
-
-# # create interaction properties 
-# laminateModel.ContactProperty('Hard Contact')
-# laminateModel.interactionProperties['Hard Contact'].TangentialBehavior(
-#     formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
-#     pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
-#     table=((0.15, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
-#     fraction=0.005, elasticSlipStiffness=None)

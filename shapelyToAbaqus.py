@@ -47,16 +47,19 @@ for matAngle in laminateAngles:
         140.4, 11.6, 0.289, 0.298, 6.47, 4.38, matAngle)
     laminateModel.materials['Tape {}'.format(matAngle)].Elastic(
         type=ENGINEERING_CONSTANTS, table=(rotTapeProps, ))
+    laminateModel.materials['Tape {}'.format(matAngle)].Density(
+        table=((1.59e-06, ), ))
     tapeSection = laminateModel.HomogeneousSolidSection(
             name='Tape Section {}'.format(matAngle),
             material='Tape {}'.format(matAngle))
-
     laminateModel.Material(name='Undulation {}'.format(matAngle))
     rotUndulationProps = mpa.rotateMatProps(
         112.32, 9.28, 0.289, 0.298, 5.176, 3.504, matAngle)
     laminateModel.materials['Undulation {}'.format(matAngle)].Elastic(
         type=ENGINEERING_CONSTANTS, 
         table=((112.32, 9.28, 9.28, 0.32, 0.32, 0.32, 5.176, 5.176, 3.504), ))
+    laminateModel.materials['Undulation {}'.format(matAngle)].Density(
+        table=((1.59e-06, ), ))
     undulationSection = laminateModel.HomogeneousSolidSection(
             name='Undulation Section {}'.format(matAngle),
             material='Undulation {}'.format(matAngle))
@@ -66,6 +69,7 @@ laminateModel.materials['Resin'].Elastic(type=ENGINEERING_CONSTANTS,
         table=((7.47, 7.47, 7.47, 0.32, 0.32, 0.32, 3.5, 3.5, 3.5), ))
 resinSection = laminateModel.HomogeneousSolidSection(
         name='Resin Section', material='Resin')
+laminateModel.materials['Resin'].Density(table=((1.1e-06, ), ))
 
 # # implicit
 # # create step

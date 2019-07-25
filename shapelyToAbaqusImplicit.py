@@ -295,7 +295,7 @@ laminateModel.Coupling(
             couplingType=KINEMATIC, localCsys=None, u1=ON, u2=ON, u3=ON,
             ur1=ON, ur2=ON, ur3=ON)
 
-Apply boundary conditions to reference points
+# Apply boundary conditions to reference points
 # implicit
 laminateModel.DisplacementBC(
             name='Top Surface Constraint', createStepName='Loading Step',

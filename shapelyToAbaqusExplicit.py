@@ -71,21 +71,9 @@ resinSection = laminateModel.HomogeneousSolidSection(
         name='Resin Section', material='Resin')
 laminateModel.materials['Resin'].Density(table=((1.1e-06, ), ))
 
-# implicit
+# explicit
 # create step
-laminateModel.StaticStep(name='Loading Step', previous='Initial')
-laminateModel.ContactProperty('Cohesive')
-laminateModel.interactionProperties['Cohesive'].CohesiveBehavior(
-    defaultPenalties=OFF, table=((2900.0, 2900.0, 2900.0), ))
-laminateModel.interactionProperties['Cohesive'].Damage(initTable=((
-    0.06, 0.06, 0.06), ), useEvolution=ON, evolutionType=ENERGY, 
-    evolTable=((0.000352, ), ))
-
-
-# # explicit
-# # create step
-# laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial')
-
+laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial')
 
 # # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Generate parts
@@ -219,37 +207,39 @@ for (pathNumber, tapePath) in enumerate(tapePaths):
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Create cohesive zone interactions between faces of the assembly
 
-# implicit
-laminateModel.contactDetection(defaultType=CONTACT,
-        interactionProperty='Cohesive')
-
-# # explicit
-# laminateModel.ContactProperty('Tangential')
-# laminateModel.interactionProperties['Tangential'].TangentialBehavior(
-#     formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
-#     pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
-#     table=((0.15, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
-#     fraction=0.005, elasticSlipStiffness=None)
-# laminateModel.ContactProperty('Cohesive')
-# laminateModel.interactionProperties['Cohesive'].CohesiveBehavior()
-# # laminateModel.interactionProperties['Cohesive'].Damage(initTable=((
-# #     1.0, 2.0, 3.0), ), evolTable=())
+# explicit
+laminateModel.ContactProperty('Tangential')
+laminateModel.interactionProperties['Tangential'].TangentialBehavior(
+    formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
+    pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
+    table=((0.15, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
+    fraction=0.005, elasticSlipStiffness=None)
+laminateModel.ContactProperty('Cohesive')
+laminateModel.interactionProperties['Cohesive'].CohesiveBehavior()
+# laminateModel.interactionProperties['Cohesive'].Damage(initTable=((
+#     1.0, 2.0, 3.0), ), evolTable=())
 
 # determine contacts
 laminateModel.contactDetection(defaultType=CONTACT,
     interactionProperty='Cohesive', nameEachSurfaceFound=OFF,
     createUnionOfMasterSurfaces=ON, createUnionOfSlaveSurfaces=ON)
-# delete interactions
-for interact in laminateModel.interactions.values():
-    del laminateModel.interactions['{}'.format(interact.name)]
-allMaster = laminateAssembly.surfaces['CP-All-m']
-allSlave = laminateAssembly.surfaces['CP-All-s']
+
 laminateModel.ContactExp(name='GC', createStepName='Initial')
 laminateModel.interactions['GC'].includedPairs.setValuesInStep(
     stepName='Initial', useAllstar=ON)
 laminateModel.interactions['GC'].contactPropertyAssignments.appendInStep(
-    stepName='Initial', assignments=((GLOBAL, SELF, 'Tangential'),
-    (allMaster, allSlave, 'Cohesive')))
+        stepName='Initial', assignments=((GLOBAL, SELF, 'Tangential'), ))
+for interact in laminateModel.interactions.values():
+    if interact.name == 'GC': 
+        continue
+    else:
+        masterName = interact.master[0]
+        slaveName = interact.slave[0]
+        masterSurf = laminateAssembly.surfaces[masterName]
+        slaveSurf = laminateAssembly.surfaces[slaveName]
+        laminateModel.interactions['GC'].contactPropertyAssignments.appendInStep(
+            stepName='Initial', assignments=((masterSurf, slaveSurf, 'Cohesive'), ))
+        del laminateModel.interactions['{}'.format(interact.name)]
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Apply boundary conditions
@@ -295,36 +285,22 @@ laminateModel.Coupling(
             couplingType=KINEMATIC, localCsys=None, u1=ON, u2=ON, u3=ON,
             ur1=ON, ur2=ON, ur3=ON)
 
-Apply boundary conditions to reference points
-# implicit
+# explicit
+laminateModel.SmoothStepAmplitude(name='Smoothing Amplitude',
+    timeSpan=STEP, data=((0.0, 0.0), (1e-05, 1.0)))
 laminateModel.DisplacementBC(
-            name='Top Surface Constraint', createStepName='Loading Step',
-            region=rfPoint1Region, u1=0.0, u2=1.0, u3=0.0, ur1=0.0, ur2=0.0,
-            ur3=0.0, amplitude=UNSET, fixed=OFF, distributionType=UNIFORM,
-            fieldName='', localCsys=None)
-laminateModel.DisplacementBC(
-            name='Bottom Surface Constraint', createStepName='Loading Step',
-            region=rfPoint2Region, u1=0.0, u2=0.0, u3=0.0, ur1=0.0, ur2=0.0,
-            ur3=0.0, amplitude=UNSET, fixed=OFF, distributionType=UNIFORM,
-            fieldName='', localCsys=None)
-# laminateModel.ZsymmBC(name='Symmetry', createStepName='Loading Step', 
-#     region=symFacesSet, localCsys=None)
+    name='Bottom Surface BC', createStepName='Loading Step',
+    region=rfPoint2Region, u1=0.0, u2=0.0, u3=0.0, ur1=0.0, ur2=0.0,
+    ur3=0.0, amplitude=UNSET, fixed=OFF, distributionType=UNIFORM,
+    fieldName='', localCsys=None)
+laminateModel.VelocityBC(name='Top Surface BC', createStepName='Loading Step', 
+    region=rfPoint1Region, v1=UNSET, v2=0.01, v3=UNSET, vr1=UNSET, vr2=UNSET, 
+    vr3=UNSET, amplitude='Smoothing Amplitude', localCsys=None, 
+    distributionType=UNIFORM, fieldName='')
+laminateModel.ZsymmBC(name='Symmetry', createStepName='Loading Step', 
+    region=symFacesSet, localCsys=None)
 
 
-# # explicit
-# laminateModel.SmoothStepAmplitude(name='Smoothing Amplitude',
-#     timeSpan=STEP, data=((0.0, 0.0), (1e-05, 1.0)))
-# laminateModel.DisplacementBC(
-#     name='Bottom Surface BC', createStepName='Loading Step',
-#     region=rfPoint2Region, u1=0.0, u2=0.0, u3=0.0, ur1=0.0, ur2=0.0,
-#     ur3=0.0, amplitude=UNSET, fixed=OFF, distributionType=UNIFORM,
-#     fieldName='', localCsys=None)
-# laminateModel.VelocityBC(name='Top Surface BC', createStepName='Loading Step', 
-#     region=rfPoint1Region, v1=UNSET, v2=0.01, v3=UNSET, vr1=UNSET, vr2=UNSET, 
-#     vr3=UNSET, amplitude='Smoothing Amplitude', localCsys=None, 
-#     distributionType=UNIFORM, fieldName='')
-# laminateModel.ZsymmBC(name='Symmetry', createStepName='Loading Step', 
-#     region=symFacesSet, localCsys=None)
 
 
 

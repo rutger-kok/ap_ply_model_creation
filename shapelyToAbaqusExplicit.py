@@ -29,13 +29,13 @@ laminateAssembly = laminateModel.rootAssembly
 # Define model geometry
 # Create geometries using shapely
 t = 2.0  # layer thickness 
-laminateAngles = (0,90)  # define angles of tapes in laminate
+laminateAngles = (0,90,45)  # define angles of tapes in laminate
 partTypes = ['Tape', 'Resin', 'Undulation']
 # create grid using shapely
-partGrid = sigc.createGrids(tapeAngles=laminateAngles, tapeWidths=(20,20))
+partGrid = sigc.createGrids(tapeAngles=laminateAngles, tapeWidths=(20,20,20))
 # identify parts in grid
 tapePaths = tp.laminateCreation(
-    partGrid, tapeAngles=laminateAngles, tapeWidths=(20,20), tapeSpacing=2)
+    partGrid, tapeAngles=laminateAngles, tapeWidths=(20,20,20), tapeSpacing=1)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Set global parameters
@@ -54,7 +54,8 @@ for matAngle in laminateAngles:
             material='Tape {}'.format(matAngle))
     laminateModel.Material(name='Undulation {}'.format(matAngle))
     rotUndulationProps = mpa.rotateMatProps(
-        112.32, 9.28, 0.289, 0.298, 5.176, 3.504, matAngle)
+        140.4, 11.6, 0.289, 0.298, 6.47, 4.38, matAngle)
+        # 112.32, 9.28, 0.289, 0.298, 5.176, 3.504, matAngle)
     laminateModel.materials['Undulation {}'.format(matAngle)].Elastic(
         type=ENGINEERING_CONSTANTS, 
         table=((112.32, 9.28, 9.28, 0.32, 0.32, 0.32, 5.176, 5.176, 3.504), ))

@@ -278,7 +278,7 @@ class machinePass():
             elif obj3.objectType == 'Tape' or 'Resin' or 'Undulation':
                 for ly, dd in enumerate(grids[self.layer:]):
                     if dd[iii].objectType == 'Polygon':
-                        dd[iii].objectType = 'Resin'
+                        dd[iii].objectType = 'Undulation'
                         dd[iii].layer = self.layer+ly+1
                         dd[iii].angle = self.angle
                         break

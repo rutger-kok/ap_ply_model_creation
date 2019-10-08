@@ -1,6 +1,6 @@
 import numpy as np 
 import math 
-import sigcOpt as sigc
+import sigc8 as sigc
 from shapely.geometry import Polygon
 
 '''

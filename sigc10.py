@@ -22,7 +22,7 @@ def objPlot(grid, angles, typ, sample=None):
     # define specimen boundaries
     if sample == None:
         sample = Polygon(
-            [(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1), (-50.0, 75.1)])
+            [(-25.0, -75.1), (25.0, -75.1), (25.0, 75.1), (-25.0, 75.1)])
     f1, axes = plt.subplots(3, 3, sharex='col', sharey='row')
     f1.suptitle('{} per Layer'.format(typ))
 
@@ -91,7 +91,7 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
     # define specimen boundaries
     if sample == None:
         sample = Polygon(
-            [(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1), (-50.0, 75.1)])
+            [(-25.0, -75.1), (25.0, -75.1), (25.0, 75.1), (-25.0, 75.1)])
     
     tapes = zip(tapeAngles, tapeWidths)
     partitionLines = []

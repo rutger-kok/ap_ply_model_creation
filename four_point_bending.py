@@ -14,8 +14,8 @@ import numpy as np
 from shapely.ops import cascaded_union
 from itertools import count
 import chou1972v2 as chou
-import sigc8 as sigc
-import tapePlacement8 as tp
+import sigc10 as sigc
+import tapePlacement10 as tp
 import matprops_abaqus as mpa
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
@@ -40,6 +40,7 @@ hu = 0.175  # height of the undulation
 uw = 2.5  # total length of the undulation
 O1 = math.radians(laminateAngles[1])  # in-plane angle of non-undulating plies
 O2 = math.radians(laminateAngles[0])  # in-plane angle of undulating plies
+tLaminate = cpt*len(laminateAngles)
 
 partTypes = ['Tape', 'Resin', 'Undulation']
 # create grid using shapely
@@ -57,33 +58,22 @@ Clamina = chou.CFromConstants(140.4,11.6,0.289,0.298,6.47,4.38)
 Vfrac, a, rat = chou.undulationGeometry(ht, hf, hu, uw, n)
 CIsostrain, CIsostress = chou.determineStiffness(Clamina, a, O1, O2, Vfrac, n)
 
-print CIsostress
+laminateModel.Material(name='Tape')
+rotTapeProps = mpa.rotateMatProps(140.4, 11.6, 0.289, 0.298, 6.47, 4.38, 0.0)
+laminateModel.materials['Tape'].Elastic(
+    type=ENGINEERING_CONSTANTS, table=(rotTapeProps, ))
+laminateModel.materials['Tape'].Density(table=((1.59e-06, ), ))
+tapeSection = laminateModel.HomogeneousSolidSection(
+        name='Tape Section', material='Tape')
 
-# Define materials and sections
-for matAngle in laminateAngles:
-    laminateModel.Material(name='Tape {}'.format(matAngle))
-    rotTapeProps = mpa.rotateMatProps(
-        140.4, 11.6, 0.289, 0.298, 6.47, 4.38, matAngle)
-    laminateModel.materials['Tape {}'.format(matAngle)].Elastic(
-        type=ENGINEERING_CONSTANTS, table=(rotTapeProps, ))
-    laminateModel.materials['Tape {}'.format(matAngle)].Density(
-        table=((1.59e-06, ), ))
-    tapeSection = laminateModel.HomogeneousSolidSection(
-            name='Tape Section {}'.format(matAngle),
-            material='Tape {}'.format(matAngle))
-    laminateModel.Material(name='Undulation {}'.format(matAngle))
-    print chou.rotateLaminaStiffness(CIsostress, math.radians(matAngle), 0)
-    rotUndulationProps = chou.engineeringConstants(
-        np.linalg.inv(chou.rotateLaminaStiffness(CIsostress, math.radians(matAngle), 0)))
-    
-    laminateModel.materials['Undulation {}'.format(matAngle)].Elastic(
-        type=ENGINEERING_CONSTANTS, 
-        table=(rotUndulationProps, ))
-    laminateModel.materials['Undulation {}'.format(matAngle)].Density(
-        table=((1.59e-06, ), ))
-    undulationSection = laminateModel.HomogeneousSolidSection(
-            name='Undulation Section {}'.format(matAngle),
-            material='Undulation {}'.format(matAngle))
+laminateModel.Material(name='Undulation')
+rotUndulationProps = chou.engineeringConstants(
+    np.linalg.inv(chou.rotateLaminaStiffness(CIsostress, math.radians(0.0), 0)))
+laminateModel.materials['Undulation'].Elastic(
+    type=ENGINEERING_CONSTANTS, table=(rotUndulationProps, ))
+laminateModel.materials['Undulation'].Density(table=((1.59e-06, ), ))
+undulationSection = laminateModel.HomogeneousSolidSection(
+        name='Undulation Section', material='Undulation')
 
 laminateModel.Material(name='Resin')
 laminateModel.materials['Resin'].Elastic(type=ENGINEERING_CONSTANTS, 
@@ -94,7 +84,10 @@ laminateModel.materials['Resin'].Density(table=((1.1e-06, ), ))
 
 # explicit
 # create step
-laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial')
+laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial',
+        timePeriod=30.0)
+laminateModel.fieldOutputRequests['F-Output-1'].setValues(
+        numIntervals=100)
 
 # # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Generate parts
@@ -128,32 +121,68 @@ def definePart(obj, objType, objAngle, layer):
 
     if objType == 'Resin' or objType == 'Tape':
         objPart.SectionAssignment(
-            region=objRegion, sectionName='Tape Section {}'.format(objAngle),
+            region=objRegion, sectionName='Tape Section',
             offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
             thicknessAssignment=FROM_SECTION)
     else:
         objPart.SectionAssignment(
-            region=objRegion, sectionName='Undulation Section {}'.format(objAngle),
+            region=objRegion, sectionName='Undulation Section',
             offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
             thicknessAssignment=FROM_SECTION)
 
     objPart.MaterialOrientation(
-        region=objRegion, orientationType=SYSTEM, axis=AXIS_2,
+        region=objRegion, orientationType=SYSTEM, axis=AXIS_3,
         localCsys=None, fieldName='', 
         additionalRotationType=ROTATION_ANGLE, additionalRotationField='',
-        angle=0.0, stackDirection=STACK_3)
+        angle=objAngle, stackDirection=STACK_3)
 
     # mesh
     objPart.seedPart(size=1.0, deviationFactor=0.1, minSizeFactor=0.1)
     objPart.generateMesh()
 
+    # mirror part
+    mirrorPart = laminateModel.Part(
+            name='{} {}-{} Mirror'.format(objType, layer, definePart.counter), 
+            objectToCopy=laminateModel.parts['{} {}-{}'.format(
+                objType, layer, definePart.counter)],
+            compressFeatureList=ON, mirrorPlane=XYPLANE)
+
+    mirrorCells = mirrorPart.cells  # all cells within part (only 1 cell)
+    # define the part 'region' (necessary to define mat. orient.)
+    mirrorRegion = regionToolset.Region(cells=mirrorCells[:])
+
+    if objType == 'Resin' or objType == 'Tape':
+        mirrorPart.SectionAssignment(
+            region=mirrorRegion, sectionName='Tape Section',
+            offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
+            thicknessAssignment=FROM_SECTION)
+    else:
+        mirrorPart.SectionAssignment(
+            region=mirrorRegion, sectionName='Undulation Section',
+            offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
+            thicknessAssignment=FROM_SECTION)
+
+    mirrorPart.MaterialOrientation(
+        region=mirrorRegion, orientationType=SYSTEM, axis=AXIS_3,
+        localCsys=None, fieldName='', 
+        additionalRotationType=ROTATION_ANGLE, additionalRotationField='',
+        angle=objAngle, stackDirection=STACK_3)
+
+    # mesh mirrored part
+    mirrorPart.seedPart(size=1.0, deviationFactor=0.1, minSizeFactor=0.1)
+    mirrorPart.generateMesh()
+
     # create the part instance
-    laminateAssembly = laminateModel.rootAssembly
     instanceName = '{} Instance {}-{}'.format(objType, layer, definePart.counter)
+    mirrorInstanceName = '{} Mirror Instance {}-{}'.format(objType, layer, definePart.counter)
     objInstance = laminateAssembly.Instance(
             name=instanceName, part=objPart, dependent=ON)
     laminateAssembly.translate(
             instanceList=(instanceName, ), vector=(0.0, 0.0, layer*cpt))
+    mirrorObjInstance = laminateAssembly.Instance(
+            name=mirrorInstanceName, part=mirrorPart, dependent=ON)
+    laminateAssembly.translate(
+            instanceList=(mirrorInstanceName, ), vector=(0.0, 0.0, -layer*cpt))
 
     return instanceName
 definePart.counter = 0  # initialize counter used to number parts
@@ -222,9 +251,9 @@ for (pathNumber, tapePath) in enumerate(tapePaths):
         passRegion = regionToolset.Region(
             cells=laminateModel.parts['Pass {}'.format(pathNumber)].cells[:])
         laminateModel.parts['Pass {}'.format(pathNumber)].MaterialOrientation(
-            region=passRegion, orientationType=SYSTEM, axis=AXIS_2,
+            region=passRegion, orientationType=SYSTEM, axis=AXIS_3,
             localCsys=None, fieldName='', additionalRotationType=ROTATION_ANGLE,
-            additionalRotationField='', angle=0.0, stackDirection=STACK_3)
+            additionalRotationField='', angle=pathAngle, stackDirection=STACK_3)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Create cohesive zone interactions between faces of the assembly
@@ -236,6 +265,9 @@ laminateModel.interactionProperties['Tangential'].TangentialBehavior(
     pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
     table=((0.15, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
     fraction=0.005, elasticSlipStiffness=None)
+laminateModel.interactionProperties['Tangential'].NormalBehavior(
+    pressureOverclosure=HARD, allowSeparation=ON, 
+    constraintEnforcementMethod=DEFAULT)
 laminateModel.ContactProperty('Cohesive')
 laminateModel.interactionProperties['Cohesive'].CohesiveBehavior()
 # laminateModel.interactionProperties['Cohesive'].Damage(initTable=((
@@ -263,68 +295,94 @@ for interact in laminateModel.interactions.values():
             stepName='Initial', assignments=((masterSurf, slaveSurf, 'Cohesive'), ))
         del laminateModel.interactions['{}'.format(interact.name)]
 
+
+# IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
+# Create rigid bodies for four point bending
+
+rollerRadius = 2.5
+rollerSketch = laminateModel.ConstrainedSketch(name='Roller', 
+    sheetSize=200.0)
+rollerSketch.CircleByCenterPerimeter(
+        center=(0.0, 0.0), point1=(rollerRadius, 0.0))
+rollerPart = laminateModel.Part(name='Roller Part', dimensionality=THREE_D, 
+    type=DISCRETE_RIGID_SURFACE)
+rollerPart.BaseSolidExtrude(sketch=rollerSketch, depth=50.0)
+rollerCells = rollerPart.cells
+rollerPart.RemoveCells(cellList = rollerCells[0:1])
+rollerRFID = rollerPart.ReferencePoint(point=rollerPart.InterestingPoint(
+        edge=rollerPart.edges[0], rule=CENTER)).id
+# mesh roller part
+rollerPart.seedPart(size=0.71, deviationFactor=0.1, minSizeFactor=0.1)
+rollerPart.generateMesh()
+
+# Place rigid bodies in assembly
+# roller 1
+laminateAssembly.Instance(name='Roller 1', part=rollerPart, dependent=ON)
+laminateAssembly.rotate(instanceList=('Roller 1', ), axisPoint=(0.0, 0.0, 0.0), 
+    axisDirection=(0.0, 1.0, 0.0), angle=90.0)
+laminateAssembly.translate(
+        instanceList=('Roller 1', ),
+        vector=(-25.0, 25.0, rollerRadius+tLaminate))
+# roller 2
+laminateAssembly.Instance(name='Roller 2', part=rollerPart, dependent=ON)
+laminateAssembly.rotate(instanceList=('Roller 2', ), axisPoint=(0.0, 0.0, 0.0), 
+    axisDirection=(0.0, 1.0, 0.0), angle=90.0)
+laminateAssembly.translate(
+        instanceList=('Roller 2', ),
+        vector=(-25.0, -25.0, rollerRadius+tLaminate))
+# roller 3
+laminateAssembly.Instance(name='Roller 3', part=rollerPart, dependent=ON)
+laminateAssembly.rotate(instanceList=('Roller 3', ), axisPoint=(0.0, 0.0, 0.0), 
+    axisDirection=(0.0, 1.0, 0.0), angle=90.0)
+laminateAssembly.translate(
+        instanceList=('Roller 3', ),
+        vector=(-25.0, 50.0, -rollerRadius-tLaminate))
+# roller 4
+laminateAssembly.Instance(name='Roller 4', part=rollerPart, dependent=ON)
+laminateAssembly.rotate(instanceList=('Roller 4', ), axisPoint=(0.0, 0.0, 0.0), 
+    axisDirection=(0.0, 1.0, 0.0), angle=90.0)
+laminateAssembly.translate(
+    instanceList=('Roller 4', ),
+    vector=(-25.0, -50.0, -rollerRadius-tLaminate))
+
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Apply boundary conditions
 
 # identify faces at top and bottom for coupling
-tFaces = [inst.faces.getByBoundingBox(-60.0,74.0,-1.0,60.0,76.0,6.0) for inst
+tFaces = [inst.faces.getByBoundingBox(-60.0,-76.0,0.34,60.0,76.0,0.36) for inst
                 in laminateAssembly.instances.values() 
-                if inst.faces.getByBoundingBox(-60.0,74.0,-1.0,60.0,76.0,6.0)]
+                if inst.faces.getByBoundingBox(-60.0,-76.0,0.34,60.0,76.0,0.36)]
 tFacesSurface = laminateAssembly.Surface(
         side1Faces=tFaces, name='Top Faces')
-bFaces = [inst.faces.getByBoundingBox(-60.0,-76.0,-1.0,60.0,-74.0,6.0) for inst
+bFaces = [inst.faces.getByBoundingBox(-60.0,-76.0,-0.36,60.0,76.0,-0.34) for inst
                 in laminateAssembly.instances.values() 
-                if inst.faces.getByBoundingBox(-60.0,-76.0,-1.0,60.0,-74.0,6.0)]
+                if inst.faces.getByBoundingBox(-60.0,-76.0,-0.36,60.0,76.0,-0.34)]
 bFacesSurface = laminateAssembly.Surface(
         side1Faces=bFaces, name='Bottom Faces')
-symFaces = [inst.faces.getByBoundingBox(-60.0,-76.0,-1.0,60.0,76.0,0.001) for inst
-                in laminateAssembly.instances.values() 
-                if inst.faces.getByBoundingBox(-60.0,-76.0,-1.0,60.0,76.0,0.001)]
-symFacesSet = laminateAssembly.Set(
-        faces=symFaces, name='Symmetry Faces')
-
-# create reference points for coupling                
-rfPoint1Id = laminateAssembly.ReferencePoint(
-        point=(0.0,80.0,2.0)).id
-rfPoint1 = laminateAssembly.referencePoints[rfPoint1Id]
-rfPoint1Region = laminateAssembly.Set(
-        referencePoints=(rfPoint1,), name='Coupling Reference Point 1')
-rfPoint2Id = laminateAssembly.ReferencePoint(
-        point=(0.0,-80.0,2.0)).id
-rfPoint2 = laminateAssembly.referencePoints[rfPoint2Id]
-rfPoint2Region = laminateAssembly.Set(
-        referencePoints=(rfPoint2,), name='Coupling Reference Point 2')
-
-laminateModel.Coupling(
-            name='Top Coupling', controlPoint=rfPoint1Region,
-            surface=tFacesSurface, influenceRadius=WHOLE_SURFACE,
-            couplingType=KINEMATIC, localCsys=None, u1=ON, u2=ON, u3=ON,
-            ur1=ON, ur2=ON, ur3=ON)
-
-laminateModel.Coupling(
-            name='Bottom Coupling', controlPoint=rfPoint2Region,
-            surface=bFacesSurface, influenceRadius=WHOLE_SURFACE,
-            couplingType=KINEMATIC, localCsys=None, u1=ON, u2=ON, u3=ON,
-            ur1=ON, ur2=ON, ur3=ON)
 
 # explicit
 laminateModel.SmoothStepAmplitude(name='Smoothing Amplitude',
     timeSpan=STEP, data=((0.0, 0.0), (1e-05, 1.0)))
-laminateModel.DisplacementBC(
-    name='Bottom Surface BC', createStepName='Loading Step',
-    region=rfPoint2Region, u1=0.0, u2=0.0, u3=0.0, ur1=0.0, ur2=0.0,
-    ur3=0.0, amplitude=UNSET, fixed=OFF, distributionType=UNIFORM,
-    fieldName='', localCsys=None)
-laminateModel.VelocityBC(name='Top Surface BC', createStepName='Loading Step', 
-    region=rfPoint1Region, v1=UNSET, v2=0.01, v3=UNSET, vr1=UNSET, vr2=UNSET, 
-    vr3=UNSET, amplitude='Smoothing Amplitude', localCsys=None, 
-    distributionType=UNIFORM, fieldName='')
-laminateModel.ZsymmBC(name='Symmetry', createStepName='Loading Step', 
-    region=symFacesSet, localCsys=None)
 
+rfPoint1 = laminateAssembly.instances['Roller 1'].referencePoints[3]
+rfPoint2 = laminateAssembly.instances['Roller 2'].referencePoints[3]
+rfPoint3 = laminateAssembly.instances['Roller 3'].referencePoints[3]
+rfPoint4 = laminateAssembly.instances['Roller 4'].referencePoints[3]
 
+topRollerRegion = laminateAssembly.Set(referencePoints=(rfPoint1, rfPoint2, ),
+        name='Top Rollers')
+laminateModel.DisplacementBC(name='Top Roller BC', createStepName='Initial', 
+    region=topRollerRegion, u1=SET, u2=SET, u3=UNSET, ur1=SET, ur2=SET, ur3=SET, 
+    amplitude=UNSET, distributionType=UNIFORM, fieldName='', 
+    localCsys=None)
+bottomRollerRegion = laminateAssembly.Set(referencePoints=(rfPoint3, rfPoint4, ),
+        name='Bottom Rollers')
+laminateModel.EncastreBC(name='Bottom Roller BC', createStepName='Initial', 
+    region=bottomRollerRegion, localCsys=None)
 
-
-
+laminateModel.DisplacementBC(name='Top Roller Displacement', 
+    createStepName='Loading Step', region=topRollerRegion, u1=0.0, u2=0.0, 
+    u3=-0.025, ur1=0.0, ur2=0.0, ur3=0.0, amplitude='Smoothing Amplitude', 
+    fixed=OFF, distributionType=UNIFORM, fieldName='', localCsys=None)
 
 

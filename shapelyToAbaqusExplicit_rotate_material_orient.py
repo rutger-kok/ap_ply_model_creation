@@ -53,37 +53,26 @@ tapePaths = tp.laminateCreation(
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Set global parameters
 
-Clamina = chou.CFromConstants(140.4,11.6,0.289,0.298,6.47,4.38)
+Clamina = chou.CFromConstants(146.8,11.6,0.289,0.298,6.47,4.38)
 Vfrac, a, rat = chou.undulationGeometry(ht, hf, hu, uw, n)
 CIsostrain, CIsostress = chou.determineStiffness(Clamina, a, O1, O2, Vfrac, n)
 
-print CIsostress
+laminateModel.Material(name='Tape')
+rotTapeProps = mpa.rotateMatProps(146.8, 11.6, 0.289, 0.298, 6.47, 4.38, 0.0)
+laminateModel.materials['Tape'].Elastic(
+    type=ENGINEERING_CONSTANTS, table=(rotTapeProps, ))
+laminateModel.materials['Tape'].Density(table=((1.59e-06, ), ))
+tapeSection = laminateModel.HomogeneousSolidSection(
+        name='Tape Section', material='Tape')
 
-# Define materials and sections
-for matAngle in laminateAngles:
-    laminateModel.Material(name='Tape {}'.format(matAngle))
-    rotTapeProps = mpa.rotateMatProps(
-        140.4, 11.6, 0.289, 0.298, 6.47, 4.38, matAngle)
-    laminateModel.materials['Tape {}'.format(matAngle)].Elastic(
-        type=ENGINEERING_CONSTANTS, table=(rotTapeProps, ))
-    laminateModel.materials['Tape {}'.format(matAngle)].Density(
-        table=((1.59e-06, ), ))
-    tapeSection = laminateModel.HomogeneousSolidSection(
-            name='Tape Section {}'.format(matAngle),
-            material='Tape {}'.format(matAngle))
-    laminateModel.Material(name='Undulation {}'.format(matAngle))
-    print chou.rotateLaminaStiffness(CIsostress, math.radians(matAngle), 0)
-    rotUndulationProps = chou.engineeringConstants(
-        np.linalg.inv(chou.rotateLaminaStiffness(CIsostress, math.radians(matAngle), 0)))
-    
-    laminateModel.materials['Undulation {}'.format(matAngle)].Elastic(
-        type=ENGINEERING_CONSTANTS, 
-        table=(rotUndulationProps, ))
-    laminateModel.materials['Undulation {}'.format(matAngle)].Density(
-        table=((1.59e-06, ), ))
-    undulationSection = laminateModel.HomogeneousSolidSection(
-            name='Undulation Section {}'.format(matAngle),
-            material='Undulation {}'.format(matAngle))
+laminateModel.Material(name='Undulation')
+rotUndulationProps = chou.engineeringConstants(
+    np.linalg.inv(chou.rotateLaminaStiffness(CIsostress, math.radians(0.0), 0)))
+laminateModel.materials['Undulation'].Elastic(
+    type=ENGINEERING_CONSTANTS, table=(rotUndulationProps, ))
+laminateModel.materials['Undulation'].Density(table=((1.59e-06, ), ))
+undulationSection = laminateModel.HomogeneousSolidSection(
+        name='Undulation Section', material='Undulation')
 
 laminateModel.Material(name='Resin')
 laminateModel.materials['Resin'].Elastic(type=ENGINEERING_CONSTANTS, 
@@ -94,8 +83,12 @@ laminateModel.materials['Resin'].Density(table=((1.1e-06, ), ))
 
 # explicit
 # create step
-laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial')
+laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial',
+        timePeriod=30.0)
 
+# Modify field output request
+laminateModel.fieldOutputRequests['F-Output-1'].setValues(
+        numIntervals=100)
 # # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Generate parts
 
@@ -128,20 +121,20 @@ def definePart(obj, objType, objAngle, layer):
 
     if objType == 'Resin' or objType == 'Tape':
         objPart.SectionAssignment(
-            region=objRegion, sectionName='Tape Section {}'.format(objAngle),
+            region=objRegion, sectionName='Tape Section',
             offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
             thicknessAssignment=FROM_SECTION)
     else:
         objPart.SectionAssignment(
-            region=objRegion, sectionName='Undulation Section {}'.format(objAngle),
+            region=objRegion, sectionName='Undulation Section',
             offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
             thicknessAssignment=FROM_SECTION)
 
     objPart.MaterialOrientation(
-        region=objRegion, orientationType=SYSTEM, axis=AXIS_2,
+        region=objRegion, orientationType=SYSTEM, axis=AXIS_3,
         localCsys=None, fieldName='', 
         additionalRotationType=ROTATION_ANGLE, additionalRotationField='',
-        angle=0.0, stackDirection=STACK_3)
+        angle=objAngle, stackDirection=STACK_3)
 
     # mesh
     objPart.seedPart(size=1.0, deviationFactor=0.1, minSizeFactor=0.1)
@@ -222,9 +215,9 @@ for (pathNumber, tapePath) in enumerate(tapePaths):
         passRegion = regionToolset.Region(
             cells=laminateModel.parts['Pass {}'.format(pathNumber)].cells[:])
         laminateModel.parts['Pass {}'.format(pathNumber)].MaterialOrientation(
-            region=passRegion, orientationType=SYSTEM, axis=AXIS_2,
+            region=passRegion, orientationType=SYSTEM, axis=AXIS_3,
             localCsys=None, fieldName='', additionalRotationType=ROTATION_ANGLE,
-            additionalRotationField='', angle=0.0, stackDirection=STACK_3)
+            additionalRotationField='', angle=pathAngle, stackDirection=STACK_3)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Create cohesive zone interactions between faces of the assembly
@@ -316,7 +309,7 @@ laminateModel.DisplacementBC(
     ur3=0.0, amplitude=UNSET, fixed=OFF, distributionType=UNIFORM,
     fieldName='', localCsys=None)
 laminateModel.VelocityBC(name='Top Surface BC', createStepName='Loading Step', 
-    region=rfPoint1Region, v1=UNSET, v2=0.01, v3=UNSET, vr1=UNSET, vr2=UNSET, 
+    region=rfPoint1Region, v1=UNSET, v2=0.02, v3=UNSET, vr1=UNSET, vr2=UNSET, 
     vr3=UNSET, amplitude='Smoothing Amplitude', localCsys=None, 
     distributionType=UNIFORM, fieldName='')
 laminateModel.ZsymmBC(name='Symmetry', createStepName='Loading Step', 

@@ -1,8 +1,7 @@
 import numpy as np 
 import math 
-import sigc3 as sigc
+import sigc5 as sigc
 from shapely.geometry import Polygon
-import matplotlib.pyplot as plt
 
 '''
 Define laminate using following 'gene'
@@ -22,6 +21,7 @@ r = resin width assumed to be the same for each tape
 '''
 
 def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing, r=1.0):
+    paths = []
     tapes = zip(tapeAngles, tapeWidths)
     s = tapeSpacing  # spacing
     for numShift in range(s+1):
@@ -34,7 +34,7 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing, r=1.0):
                 maxOffset = 50.0+r+w/2.0
                 numberOffsets = int(maxOffset/spacedOffset)
                 offsetList = [spacedOffset*k for k 
-                    in range(-numberOffsets-numShift,numberOffsets+2-numShift)]
+                    in range(-numberOffsets-numShift,numberOffsets+3-numShift)]
                 shift = numShift*offset
                 for os in offsetList:
                     tapeCoords = (
@@ -43,7 +43,8 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing, r=1.0):
                             (100.0+os+shift, (-w/2.0)),
                             (-100.0+os+shift, (-w/2.0))])   
                     createdTape = sigc.machinePass(
-                            grid, coords=tapeCoords, angle=90)
+                            grid, coords=tapeCoords, angle=90).tapePath
+                    paths.append(createdTape)
             else:
                 offset = ((w+2*r))/math.cos(math.radians(a))
                 spacedOffset = ((1+s)*(w+2*r))/math.cos(math.radians(a))
@@ -51,7 +52,7 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing, r=1.0):
                         + 50.0*math.tan(math.radians(a)))
                 numberOffsets = int(maxOffset/spacedOffset)
                 offsetList = [spacedOffset*k for k 
-                    in range(-numberOffsets-numShift,numberOffsets+1-numShift)]
+                    in range(-numberOffsets-numShift-5,numberOffsets-numShift+5)]
                 shift = numShift*offset
                 for os in offsetList:
                     tapeCoords = (
@@ -60,8 +61,9 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing, r=1.0):
                             (150.0, (-w/2.0)+os+shift),
                             (-150.0, (-w/2.0)+os+shift)])    
                     createdTape = sigc.machinePass(
-                            grid, coords=tapeCoords, angle=a)
-
+                            grid, coords=tapeCoords, angle=a).tapePath
+                    paths.append(createdTape)
+    return paths
 
 # -----------------------------------------------------------------------------
 # This section of the script only runs if this script is run directly (i.e. as
@@ -69,8 +71,24 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing, r=1.0):
 # purposes.
 
 if __name__ == '__main__':
+    import matplotlib.pyplot as plt
     # define tape width and thickness
-    grid1 = sigc.createGrids(tapeAngles=(0,90), tapeWidths=(10,10))
-    laminateCreation(grid1, tapeAngles=(0,90), tapeWidths=(10,10), tapeSpacing=2)
-    sigc.objPlot(grid1,'Tape')
+    tapeAng = (0,90)
+    grid1 = sigc.createGrids(tapeAngles=tapeAng, tapeWidths=(10,10))
+
+    for (m,poly) in grid1[0].iteritems():
+            x,y = poly.exterior.xy
+            plt.plot(x,y)
+            plt.grid(True)
+    plt.show()
+
+    tapePaths = laminateCreation(
+        grid1, tapeAngles=tapeAng, tapeWidths=(10,10), tapeSpacing=1)
+
+    sigc.objPlot(grid1, tapeAng, 'Tape')
+    sigc.objPlot(grid1, tapeAng, 'Undulation')
+    sigc.objPlot(grid1, tapeAng, 'Resin')
+
+
+
 

@@ -24,7 +24,8 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
     if sample == None:
         sample = Polygon(
             [(-50.0, -75.0), (50.0, -75.0), (50.0, 75.0), (-50.0, 75.0)])
-    
+    # define mirror point (used to mirror the Polygon boundaries)
+    mirrorPoint = Point([(0.0, 0.0), (0.0, 0.0)])
     nLayers = len(tapeAngles) # number of layers in the laminate 
     tapes = zip(tapeAngles, tapeWidths)
     partitionLines = []
@@ -37,7 +38,7 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
             maxOffset = 50.0-w/2.0
             numberOffsets = int(maxOffset/offset)
             offsetList = [offset*k for k 
-                            in range(-numberOffsets-1,numberOffsets+1)]
+                            in range(0,numberOffsets+1)]
             for os in offsetList:
                 tapeLineCoords = [((w/2.0)-uw+os, 100.0), ((w/2.0)-uw+os, -100.0)]
                 resinLineCoords1 = (
@@ -51,14 +52,15 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
                 resinLine1 = LineString(resinLineCoords1)
                 resinLine2 = LineString(resinLineCoords2)
                 partitionLines.extend([tapeLine, resinLine1, resinLine2])
+            reflectedLines = [affinity.scale(line, xfact=-1, origin=mirrorPoint) for line in partitionLines]
+            partitionLines = partitionLines + reflectedLines
 
         else:
             offset = w/math.cos(math.radians(a))
             maxOffset = (75.0 - (w/2.0)*math.cos(math.radians(a))
                     + 50.0*math.tan(math.radians(a)))
             numberOffsets = int(maxOffset/offset)
-            offsetList = [offset*k for k 
-                            in range(-numberOffsets-5,numberOffsets+5)]
+            offsetList = [offset*k for k in range(0,numberOffsets+20)]
             for os in offsetList:
                 tapeLineCoords = [(-100.0, (w/2.0)-uw+os),
                                   (100.0, (w/2.0)-uw+os)]
@@ -73,7 +75,9 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
                     LineString(resinLineCoords1), a, rotPoint)
                 resinLine2 = affinity.rotate(
                     LineString(resinLineCoords2), a, rotPoint)
-                partitionLines.extend([tapeLine, resinLine1, resinLine2])
+                partitionLines.extend([tapeLine, resinLine1])
+            reflectedLines = [affinity.rotate(line, 180.0, origin=mirrorPoint) for line in partitionLines]
+            partitionLines = partitionLines + reflectedLines
 
     # collection of individual linestrings for splitting in a list and add 
     # the polygon lines to it.
@@ -277,8 +281,8 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from objectPlot import objPlot
 
-    tapeAng = (0,90)
-    grids = createGrids(tapeAngles=tapeAng, tapeWidths=(10,10),
+    tapeAng = (0,45,-45,90)
+    grids = createGrids(tapeAngles=tapeAng, tapeWidths=(10,10,10,10),
             undulationWidth=1.0)
 
     # for (key,poly) in grids[1].iteritems():
@@ -287,7 +291,7 @@ if __name__ == '__main__':
     # plt.grid(True)
     # plt.show()
 
-    for ang in tapeAng:
+    for ang in [0,90,45]:
         passs = machinePass(grids, angle=ang, undulationWidth=1.0)
 
     # for key, polyObj in grids[1].iteritems():

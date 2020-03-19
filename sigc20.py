@@ -319,36 +319,36 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from objectPlot import objPlot
 
-    tapeAng = (0,90)
+    tapeAng = (0,60,-60)
     grids = createGrids(tapeAngles=tapeAng, tapeWidths=(10,10),
             undulationWidth=1.0)
 
-    # for (key,poly) in grids[1].iteritems():
-    #     x,y = poly.exterior.xy
-    #     plt.plot(x,y)
-    # plt.grid(True)
-    # plt.show()
+    for (key,poly) in grids[1].iteritems():
+        x,y = poly.exterior.xy
+        plt.plot(x,y)
+    plt.grid(True)
+    plt.show()
 
-    for ang in tapeAng:
-        passs = machinePass(grids, angle=ang, undulationWidth=1.0)
+    # for ang in tapeAng:
+    #     passs = machinePass(grids, angle=ang, undulationWidth=1.0)
 
-    # normalPass = machinePass(grids, angle=0 ,undulationWidth=1.0)    
-    w = 10.0 
-    uw = 1.0
-    # parallelPassCoords = ([(-100.0, 10+(w/2)), (100.0, 10+(w/2)),
-    #                  (100.0,10+(-w/2)), (-100.0, 10+(-w/2))])
-    parallelPassCoords = ([(-100.0, 10+(w/2)-(uw/2.0)), (100.0, 10+(w/2)-(uw/2.0)),
-                     (100.0,10+(-w/2)+(uw/2.0)), (-100.0, 10+(-w/2)+(uw/2.0))])
-    parallelPass = machinePass(grids, angle=0, undulationWidth=1.0, coords=parallelPassCoords)
+    # # normalPass = machinePass(grids, angle=0 ,undulationWidth=1.0)    
+    # w = 10.0 
+    # uw = 1.0
+    # # parallelPassCoords = ([(-100.0, 10+(w/2)), (100.0, 10+(w/2)),
+    # #                  (100.0,10+(-w/2)), (-100.0, 10+(-w/2))])
+    # parallelPassCoords = ([(-100.0, 10+(w/2)-(uw/2.0)), (100.0, 10+(w/2)-(uw/2.0)),
+    #                  (100.0,10+(-w/2)+(uw/2.0)), (-100.0, 10+(-w/2)+(uw/2.0))])
+    # parallelPass = machinePass(grids, angle=0, undulationWidth=1.0, coords=parallelPassCoords)
 
-    # for key, polyObj in grids[1].iteritems():
-    #     if polyObj.objectType == 'Resin':
-    #         print polyObj
-    #         print polyObj.angle
+    # # for key, polyObj in grids[1].iteritems():
+    # #     if polyObj.objectType == 'Resin':
+    # #         print polyObj
+    # #         print polyObj.angle
 
-    objPlot(grids, tapeAng, 'Tape')
-    objPlot(grids, tapeAng, 'Resin')
-    objPlot(grids, tapeAng, 'Undulation')
+    # objPlot(grids, tapeAng, 'Tape')
+    # objPlot(grids, tapeAng, 'Resin')
+    # objPlot(grids, tapeAng, 'Undulation')
 # ------------------------------------------------------------------------
 
 

@@ -12,7 +12,7 @@ def objPlot(grid, angles, typ, sample=None):
     if sample == None:
         sample = Polygon(
             [(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1), (-50.0, 75.1)])
-    f1, axes = plt.subplots(3, 3, sharex='col', sharey='row')
+    f1, axes = plt.subplots(2, 2, sharex='col', sharey='row')
     f1.suptitle('{} per Layer'.format(typ))
 
     # g = 1
@@ -52,8 +52,8 @@ def objPlot(grid, angles, typ, sample=None):
     print angleSets
     
     g = 1
-    for i in range(3):
-        for j in range(3):
+    for i in range(2):
+        for j in range(2):
             if g <= len(grid):
                 tapesInLayer = [tape for (m,tape) 
                         in grid[g].iteritems()

@@ -1,6 +1,6 @@
 from sys import path
 path.append(r'C:\Python27\Lib\site-packages')
-path.append(r"C:\Users\rutge\Documents\GitHub\interlaced_model_creation\editing\MMS")
+path.append(r"\\arran.sms.ed.ac.uk\home\s1342398\GitHub\interlaced_model_creation\editing\MMS")
 from shapely.geometry import Point, Polygon, LineString
 from shapely import affinity
 from abaqus import *

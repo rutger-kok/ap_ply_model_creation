@@ -82,11 +82,9 @@ density = 1.59e-06
 
 tapeMaterial = laminateModel.Material(name='Tape')
 tapeMaterial.Density(table=((density, ), ))
-tapeMaterial.Depvar(deleteVar=20, n=24)
-tapeMaterial.UserMaterial(
-    mechanicalConstants=(E11, E22, E33, nu12, nu13, nu23, G12, G13,
-                         G23, Xt, Xc, Yt, Yc, Sl, alpha0, G1Plus,
-                         G1Minus, G2Plus, G2Minus, G6))
+tapeMaterial.Elastic(type=ENGINEERING_CONSTANTS,
+                      table=((E11, E22, E33, nu12, nu13, nu23, G12, G13,
+                              G23), ))
 tapeSection = laminateModel.HomogeneousSolidSection(
         name='Tape Section', material='Tape')
 
@@ -112,11 +110,9 @@ for combo in interfaceAngleCombos:
     CIsostrain, CIsostress = analyticStiffness.determineStiffness(
         Clamina, a, O1, O2, Vfrac, n)
     engConstants = analyticStiffness.engineeringConstants(CIsostrain)
-    matProps = engConstants + [2.61, 1.759, 0.055, 0.285, 0.105, 53.0, 0.1,
-                               0.1, 0.00075, 0.0025, 0.0035]
+    matProps = engConstants 
     undMaterial = laminateModel.Material(name=matName)
-    undMaterial.Depvar(deleteVar=20, n=24)
-    undMaterial.UserMaterial(mechanicalConstants=matProps)
+    undMaterial.Elastic(type=ENGINEERING_CONSTANTS, table=(matProps, ))
     undMaterial.Density(table=((density, ), ))
     undulationSection = laminateModel.HomogeneousSolidSection(
             name=matName + ' Section', material=matName)

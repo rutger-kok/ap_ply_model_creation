@@ -1,5 +1,6 @@
 import math
 import sigc
+from shapely.geometry import Polygon
 
 '''
 Define laminate using following parameters
@@ -79,19 +80,27 @@ if __name__ == '__main__':
     from objectPlot import objPlot
 
     # define tape width and thickness
-    tapeAng = (0, 90, 45)
-    tapeW = (50,)*len(tapeAng)
+    tapeS = 1
+    tapeWidth = 15.0
+    tapeAng = (0, 90)
+    tapeW = (tapeWidth,)*len(tapeAng)
     cpt = 0.2
     undulationRatio = 0.2
     rw = cpt/undulationRatio
 
+    xmin = ymin = -(tapeWidth/2.0)
+    xmax = ymax = xmin + (tapeS+1)*(tapeWidth)
+
+    RVEPolygon = Polygon(
+            [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)])
+
     grid1 = sigc.createGrids(tapeAngles=tapeAng, tapeWidths=tapeW,
-                             undulationWidth=rw)
+                             undulationWidth=rw, sample=RVEPolygon)
 
     tapePaths = laminateCreation(grid1, tapeAngles=tapeAng,
-                                 tapeWidths=tapeW, tapeSpacing=1,
+                                 tapeWidths=tapeW, tapeSpacing=tapeS,
                                  undulationWidth=rw)
 
-    objPlot(grid1, tapeAng, 'Tape')
-    objPlot(grid1, tapeAng, 'Resin')
-    objPlot(grid1, tapeAng, 'Undulation')
+    objPlot(grid1, tapeAng, 'Tape', sample=RVEPolygon)
+    objPlot(grid1, tapeAng, 'Resin', sample=RVEPolygon)
+    objPlot(grid1, tapeAng, 'Undulation', sample=RVEPolygon)

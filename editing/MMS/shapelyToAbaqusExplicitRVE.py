@@ -11,6 +11,8 @@ import sigc as sigc
 import tapePlacement as tp
 import analyticStiffness
 import math
+from periodicBC_2D import periodicBC
+import mesh
 
 
 session.viewports['Viewport: 1'].setValues(displayedObject=None)
@@ -32,11 +34,11 @@ n = 200  # for analytic model discretization
 numLayers = len(laminateAngles)
 tapeSpace = 1
 
-xmin = ymin = -(tw[0]/2.0)
-xmax = ymax = xmin + (tapeSpace+1)*(tw[0])
+xMin = yMin = -(tw[0]/2.0)
+xMax = yMax = xMin + (tapeSpace+1)*(tw[0])
 
 RVEPolygon = Polygon(
-        [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)])
+        [(xMin, yMin), (xMax, yMin), (xMax, yMax), (xMin, yMax)])
 
 partTypes = ['Tape', 'Resin', 'Undulation']
 # create grid using shapely
@@ -50,7 +52,7 @@ tapePaths = tp.laminateCreation(
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model name
 
-modelName = 'Interlaced Laminate'
+modelName = 'MMS_Interlaced_RVE'
 mdb.Model(name=modelName, modelType=STANDARD_EXPLICIT)
 laminateModel = mdb.models[modelName]
 laminateAssembly = laminateModel.rootAssembly
@@ -123,14 +125,12 @@ for combo in interfaceAngleCombos:
 # Create step
 
 # create step
-laminateModel.ExplicitDynamicsStep(
-    name='Loading Step', previous='Initial', timePeriod=2.5,
-    massScaling=((SEMI_AUTOMATIC, MODEL, THROUGHOUT_STEP, 0.0, 1e-06,
-                  BELOW_MIN, 1, 0, 0.0, 0.0, 0, None), ))
+# Step
+laminateModel.StaticLinearPerturbationStep(name='Loading Step',
+                                           previous='Initial')
 
-# Modify field output request
-laminateModel.fieldOutputRequests['F-Output-1'].setValues(
-        numIntervals=100)
+laminateModel.fieldOutputRequests['F-Output-1'].setValues(variables=(
+    'S', 'LE', 'U', 'RF', 'CF', 'IVOL', 'STH'))
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Generate parts
@@ -138,9 +138,10 @@ laminateModel.fieldOutputRequests['F-Output-1'].setValues(
 # Create sketch
 specimenSketch = laminateModel.ConstrainedSketch(name='Specimen Sketch', 
     sheetSize=200.0)
-specimenSketch.rectangle(point1=(xmin, ymin), point2=(xmax, ymax))
-specimenPart = laminateModel.Part(name='Specimen', dimensionality=THREE_D,
-    type=DEFORMABLE_BODY)
+specimenSketch.rectangle(point1=(xMin, yMin), point2=(xMax, yMax))
+specimenPart = laminateModel.Part(name='Specimen',
+                                  dimensionality=THREE_D,
+                                  type=DEFORMABLE_BODY)
 specimenPart.BaseShell(sketch=specimenSketch)
 specimenFaces = specimenPart.faces
 
@@ -227,7 +228,6 @@ def partitionSpecimen(tapeAngles, tapeWidths, undulationWidth=1.0):
                 datumPlane=specimenPart.datums[dpbtp], faces=specimenFaces)
         except:
             continue
-    
 
 partitionSpecimen(tapeAngles=laminateAngles, tapeWidths=tw, undulationWidth=uw)
 
@@ -236,9 +236,9 @@ for objID, obj in partGrid[1].iteritems():
     selectedFace = specimenFaces.findAt(((objCentroid[0][0],
                                           objCentroid[0][1], 0.0), ))
     region = regionToolset.Region(faces=selectedFace)
-    compositeLayup = mdb.models['Interlaced Laminate'].parts['Specimen'].CompositeLayup(
+    compositeLayup = specimenPart.CompositeLayup(
         name='CompositeLayup-{}'.format(objID), description='',
-        elementType=SHELL, offsetType=MIDDLE_SURFACE, symmetric=False, 
+        elementType=SHELL, offsetType=MIDDLE_SURFACE, symmetric=True, 
         thicknessAssignment=FROM_SECTION)
     compositeLayup.Section(preIntegrate=OFF, integrationRule=SIMPSON, 
         thicknessType=UNIFORM, poissonDefinition=DEFAULT, temperature=GRADIENT, 
@@ -265,56 +265,40 @@ for objID, obj in partGrid[1].iteritems():
 
 # create the part instance
 specimenInstance = laminateAssembly.Instance(
-        name='Specimen Instance', part=specimenPart, dependent=ON)
+        name='Specimen', part=specimenPart, dependent=ON)
+
+
+# IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
+# Mesh 
+
+specimenFaces = specimenPart.faces
+allFacesRegion = regionToolset.Region(faces=specimenFaces)
+# elemType1 = mesh.ElemType(elemCode=CPE4, elemLibrary=STANDARD)
+# elemType2 = mesh.ElemType(elemCode=CPE3, elemLibrary=STANDARD)
+# specimenPart.setElementType(regions=allFacesRegion,
+#                             elemTypes=(elemType1, elemType2))
+specimenPart.setMeshControls(regions=specimenFaces, elemShape=QUAD,
+                             technique=STRUCTURED)
+specimenPart.seedPart(size=1.2, deviationFactor=0.1, minSizeFactor=0.1)
+specimenPart.generateMesh()
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Apply boundary conditions
 
-# # identify faces at top and bottom for coupling
-# tEdges = specimenInstance.edges.getByBoundingBox(xmin-tol, ymin, -1.0, 60.0, 76.0,
-#                                                  1.0)
-# tEdgesSurface = laminateAssembly.Surface(side1Edges=tEdges, name='Top Edges')
-# bEdges = specimenInstance.edges.getByBoundingBox(-60.0, -76.0, -1.0, 60.0,
-#                                                  -74.0, 1.0)
-# bEdgesSurface = laminateAssembly.Surface(side1Edges=bEdges,
-#                                          name='Bottom Edges')
+strainVector = [1.0, 0.0, 0.0]  # e11, e22, e12
+periodicBC(modelName=modelName, xmin=xMin, ymin=yMin, xmax=xMax, ymax=yMax,
+           strain=strainVector)
 
-# # create reference points for coupling
-# rfPoint1Id = laminateAssembly.ReferencePoint(
-#         point=(0.0, 80.0, 0.0)).id
-# rfPoint1 = laminateAssembly.referencePoints[rfPoint1Id]
-# rfPoint1Region = laminateAssembly.Set(
-#         referencePoints=(rfPoint1,), name='Coupling Reference Point 1')
-# rfPoint2Id = laminateAssembly.ReferencePoint(
-#         point=(0.0, -80.0, 0.0)).id
-# rfPoint2 = laminateAssembly.referencePoints[rfPoint2Id]
-# rfPoint2Region = laminateAssembly.Set(
-#         referencePoints=(rfPoint2,), name='Coupling Reference Point 2')
 
-# laminateModel.Coupling(
-#             name='Top Coupling', controlPoint=rfPoint1Region,
-#             surface=tEdgesSurface, influenceRadius=WHOLE_SURFACE,
-#             couplingType=KINEMATIC, localCsys=None, u1=ON, u2=ON, u3=ON,
-#             ur1=ON, ur2=ON, ur3=ON)
+# IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
+# Job 
 
-# laminateModel.Coupling(
-#             name='Bottom Coupling', controlPoint=rfPoint2Region,
-#             surface=bEdgesSurface, influenceRadius=WHOLE_SURFACE,
-#             couplingType=KINEMATIC, localCsys=None, u1=ON, u2=ON, u3=ON,
-#             ur1=ON, ur2=ON, ur3=ON)
-
-# # explicit
-# laminateModel.SmoothStepAmplitude(name='Smoothing Amplitude',
-#     timeSpan=STEP, data=((0.0, 0.0), (1e-05, 1.0)))
-# laminateModel.DisplacementBC(
-#     name='Bottom Surface BC', createStepName='Loading Step',
-#     region=rfPoint2Region, u1=0.0, u2=0.0, u3=0.0, ur1=0.0, ur2=0.0,
-#     ur3=0.0, amplitude=UNSET, fixed=OFF, distributionType=UNIFORM,
-#     fieldName='', localCsys=None)
-# laminateModel.VelocityBC(name='Top Surface BC', createStepName='Loading Step',
-#     region=rfPoint1Region, v1=UNSET, v2=0.02, v3=UNSET, vr1=UNSET, vr2=UNSET,
-#     vr3=UNSET, amplitude='Smoothing Amplitude', localCsys=None,
-#     distributionType=UNIFORM, fieldName='')
+mdb.Job(atTime=None, contactPrint=OFF, description='', echoPrint=OFF, 
+    explicitPrecision=SINGLE, getMemoryFromAnalysis=True, historyPrint=OFF, 
+    memory=90, memoryUnits=PERCENTAGE, model=modelName, modelPrint=OFF, 
+    multiprocessingMode=DEFAULT, name=modelName, nodalOutputPrecision=SINGLE, 
+    numCpus=1, queue=None, scratch='', type=ANALYSIS, userSubroutine='', 
+    waitHours=0, waitMinutes=0)
 
 # # Change to assembly view and hide all datums
 # session.viewports['Viewport: 1'].assemblyDisplay.setValues(

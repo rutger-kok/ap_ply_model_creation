@@ -1,6 +1,6 @@
 from sys import path
 path.append(r'C:\Python27\Lib\site-packages')
-path.append(r"C:\Users\rutge\Documents\GitHub\interlaced_model_creation\editing\MMS")
+path.append(r"C:\Users\rutge\Documents\GitHub\interlaced_model_creation\working\MMS_RVE")
 from shapely.geometry import Point, Polygon, LineString
 from shapely import affinity
 from abaqus import *
@@ -14,18 +14,29 @@ import math
 from periodicBC_2D import periodicBC
 import mesh
 import os
+import ast
 
 session.viewports['Viewport: 1'].setValues(displayedObject=None)
 
-
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model parameters
+userInput = getInputs(fields=(('Laminate Angles (deg):', '(0, 90)'),
+                              ('Tape Width (mm):', '25'),
+                              ('Tape Spacing (int):', '1'),
+                              ('Cured Ply Thickness (mm):', '0.18'),
+                              ('Undulation Ratio (float):', '0.09')),
+                      label='Please provide the following information',
+                      dialogTitle='Model Parameters')
 
-laminateAngles = (0, 90)  # define angles of tapes in laminate
-tapeSpace = 1  # number of gaps between tapes in interlacing pattern
-cpt = 0.2  # cured ply thickness
-tw = (15, 15)  # tape widths
-undulationRatio = 0.0085  # ratio of undulation amplitude to length
+laminateAngles = ast.literal_eval(userInput[0])  # define angles of tapes
+tapeWidth = float(userInput[1])
+tw = (tapeWidth, )*len(laminateAngles)  # tape widths
+# number of gaps between tapes in interlacing pattern
+tapeSpace = int(userInput[2])
+# cured ply thickness e.g. 0.18125
+cpt = float(userInput[3])
+# ratio of undulation amplitude to length e.g. 0.090625
+undulationRatio = float(userInput[4])
 uw = cpt/undulationRatio
 
 # define RVE dimensions
@@ -48,14 +59,14 @@ tapePaths = tp.laminateCreation(
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model name
-
-modelName = 'MMS_RVE_0-90-{}-{}'.format(tw[0],tapeSpace)
+ratioString = userInput[4].replace('.', '_')
+modelName = '0-90-{}-{}-{}'.format(int(tw[0]), int(tapeSpace),ratioString)
 mdb.Model(name=modelName, modelType=STANDARD_EXPLICIT)
 laminateModel = mdb.models[modelName]
 laminateAssembly = laminateModel.rootAssembly
 
 # set the work directory
-wd = 'C:\\Workspace\\{}'.format(modelName)
+wd = 'C:\\Workspace\\MMS_RVE\\{}'.format(modelName)
 if not os.path.exists(wd):
     os.makedirs(wd)
 os.chdir(wd)
@@ -114,7 +125,7 @@ for combo in interfaceAngleCombos:
     CIsostrain, CIsostress = analyticStiffness.determineStiffness(
         Clamina, a, O1, O2, Vfrac, n)
     engConstants = analyticStiffness.engineeringConstants(CIsostrain)
-    matProps = engConstants 
+    matProps = engConstants
     undMaterial = laminateModel.Material(name=matName)
     undMaterial.Elastic(type=ENGINEERING_CONSTANTS, table=(matProps, ))
     undMaterial.Density(table=((density, ), ))
@@ -136,14 +147,15 @@ laminateModel.fieldOutputRequests['F-Output-1'].setValues(variables=(
 # Generate parts
 
 # Create sketch
-specimenSketch = laminateModel.ConstrainedSketch(name='Specimen Sketch', 
-    sheetSize=200.0)
+specimenSketch = laminateModel.ConstrainedSketch(name='Specimen Sketch',
+                                                 sheetSize=200.0)
 specimenSketch.rectangle(point1=(xMin, yMin), point2=(xMax, yMax))
 specimenPart = laminateModel.Part(name='Specimen',
                                   dimensionality=THREE_D,
                                   type=DEFORMABLE_BODY)
 specimenPart.BaseShell(sketch=specimenSketch)
 specimenFaces = specimenPart.faces
+
 
 def partitionSpecimen(tapeAngles, tapeWidths, undulationWidth=1.0):
     '''
@@ -238,13 +250,13 @@ for objID, obj in partGrid[1].iteritems():
     region = regionToolset.Region(faces=selectedFace)
     compositeLayup = specimenPart.CompositeLayup(
         name='CompositeLayup-{}'.format(objID), description='',
-        elementType=SHELL, offsetType=MIDDLE_SURFACE, symmetric=True, 
+        elementType=SHELL, offsetType=MIDDLE_SURFACE, symmetric=True,
         thicknessAssignment=FROM_SECTION)
-    compositeLayup.Section(preIntegrate=OFF, integrationRule=SIMPSON, 
-        thicknessType=UNIFORM, poissonDefinition=DEFAULT, temperature=GRADIENT, 
+    compositeLayup.Section(preIntegrate=OFF, integrationRule=SIMPSON,
+        thicknessType=UNIFORM, poissonDefinition=DEFAULT, temperature=GRADIENT,
         useDensity=OFF)
-    compositeLayup.ReferenceOrientation(orientationType=GLOBAL, localCsys=None, 
-        fieldName='', additionalRotationType=ROTATION_NONE, angle=0.0, 
+    compositeLayup.ReferenceOrientation(orientationType=GLOBAL, localCsys=None,
+        fieldName='', additionalRotationType=ROTATION_NONE, angle=0.0,
         axis=AXIS_3)
     for layerNumber in range(1, len(partGrid)+1):
         layerObj = partGrid[layerNumber][objID]
@@ -257,8 +269,8 @@ for objID, obj in partGrid[1].iteritems():
         else:
             material = objType
         nameOfPly = 'Ply-{}'.format(layerNumber)
-        compositeLayup.CompositePly(suppressed=False, plyName=nameOfPly, 
-            region=region, material=material, thicknessType=SPECIFY_THICKNESS, 
+        compositeLayup.CompositePly(suppressed=False, plyName=nameOfPly,
+            region=region, material=material, thicknessType=SPECIFY_THICKNESS,
             thickness=cpt, orientationType=SPECIFY_ORIENT,
             orientationValue=objAngle, additionalRotationType=ROTATION_NONE,
             additionalRotationField='', axis=AXIS_3, angle=0.0, numIntPoints=3)
@@ -291,14 +303,14 @@ periodicBC(modelName=modelName, xmin=xMin, ymin=yMin, xmax=xMax, ymax=yMax,
 
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
-# Job 
+# Job
 
 mdb.Job(atTime=None, contactPrint=OFF, description='', echoPrint=OFF, 
-    explicitPrecision=SINGLE, getMemoryFromAnalysis=True, historyPrint=OFF, 
-    memory=90, memoryUnits=PERCENTAGE, model=modelName, modelPrint=OFF, 
-    multiprocessingMode=DEFAULT, name=modelName, nodalOutputPrecision=SINGLE, 
-    numCpus=1, queue=None, scratch='', type=ANALYSIS, userSubroutine='', 
-    waitHours=0, waitMinutes=0)
+        explicitPrecision=SINGLE, getMemoryFromAnalysis=True, historyPrint=OFF, 
+        memory=90, memoryUnits=PERCENTAGE, model=modelName, modelPrint=OFF, 
+        multiprocessingMode=DEFAULT, name=modelName,
+        nodalOutputPrecision=SINGLE, numCpus=1, queue=None, scratch='',
+        type=ANALYSIS, userSubroutine='', waitHours=0, waitMinutes=0)
 mdb.jobs[modelName].submit(consistencyChecking=OFF)
 mdb.jobs[modelName].waitForCompletion()
 

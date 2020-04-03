@@ -1,11 +1,11 @@
 from sys import path
 path.append(r'C:\Python27\Lib\site-packages')
-path.append(r"\\arran.sms.ed.ac.uk\home\s1342398\GitHub\interlaced_model_creation\editing\MMS")
+path.append(r"C:\Users\rutge\Documents\GitHub\interlaced_model_creation\editing\MMS")
 from shapely.geometry import Point, Polygon, LineString
 from shapely import affinity
 from abaqus import *
 from abaqusConstants import *
-import displayGroupMdbToolset as dgm
+from visualization import *
 import regionToolset
 import sigc as sigc
 import tapePlacement as tp
@@ -13,34 +13,31 @@ import analyticStiffness
 import math
 from periodicBC_2D import periodicBC
 import mesh
-
+import os
 
 session.viewports['Viewport: 1'].setValues(displayedObject=None)
-'''
-Changelog:
-- modified script to create shell model with undulations rather than solid
-  element model.
-- included function to create datum planes and partition the sample part
-  into region for material assignment at the Gauss point level.
-'''
+
+
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model parameters
 
-cpt = 0.175  # cured ply thickness
 laminateAngles = (0, 90)  # define angles of tapes in laminate
-tw = (25, 25)  # tape widths
-uw = 1.0
-n = 200  # for analytic model discretization
-numLayers = len(laminateAngles)
-tapeSpace = 1
+tapeSpace = 1  # number of gaps between tapes in interlacing pattern
+cpt = 0.2  # cured ply thickness
+tw = (15, 15)  # tape widths
+undulationRatio = 0.0085  # ratio of undulation amplitude to length
+uw = cpt/undulationRatio
 
+# define RVE dimensions
 xMin = yMin = -(tw[0]/2.0)
 xMax = yMax = xMin + (tapeSpace+1)*(tw[0])
-
+specimenHeight = yMax-yMin
+specimenWidth = xMax-xMin
+numLayers = len(laminateAngles)*2.0  # symmetric
+laminateThickness = numLayers*cpt
 RVEPolygon = Polygon(
         [(xMin, yMin), (xMax, yMin), (xMax, yMax), (xMin, yMax)])
 
-partTypes = ['Tape', 'Resin', 'Undulation']
 # create grid using shapely
 partGrid = sigc.createGrids(tapeAngles=laminateAngles, tapeWidths=tw,
                             undulationWidth=uw, sample=RVEPolygon)
@@ -52,10 +49,16 @@ tapePaths = tp.laminateCreation(
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model name
 
-modelName = 'MMS_Interlaced_RVE'
+modelName = 'MMS_RVE_0-90-{}-{}'.format(tw[0],tapeSpace)
 mdb.Model(name=modelName, modelType=STANDARD_EXPLICIT)
 laminateModel = mdb.models[modelName]
 laminateAssembly = laminateModel.rootAssembly
+
+# set the work directory
+wd = 'C:\\Workspace\\{}'.format(modelName)
+if not os.path.exists(wd):
+    os.makedirs(wd)
+os.chdir(wd)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Material input data
@@ -100,6 +103,7 @@ resinSection = laminateModel.HomogeneousSolidSection(
 # Determine stiffness of undulation regions using analytical model
 # Adapted from Chou et al. 1972
 
+n = 200  # for analytic model discretization
 interfaceAngleCombos = [(0, ang) for ang in laminateAngles if ang != 0]
 for combo in interfaceAngleCombos:
     matName = 'Undulation {}'.format(combo)
@@ -255,7 +259,7 @@ for objID, obj in partGrid[1].iteritems():
         nameOfPly = 'Ply-{}'.format(layerNumber)
         compositeLayup.CompositePly(suppressed=False, plyName=nameOfPly, 
             region=region, material=material, thicknessType=SPECIFY_THICKNESS, 
-            thickness=0.2, orientationType=SPECIFY_ORIENT,
+            thickness=cpt, orientationType=SPECIFY_ORIENT,
             orientationValue=objAngle, additionalRotationType=ROTATION_NONE,
             additionalRotationField='', axis=AXIS_3, angle=0.0, numIntPoints=3)
 
@@ -265,7 +269,7 @@ specimenInstance = laminateAssembly.Instance(
 
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
-# Mesh 
+# Mesh
 
 specimenFaces = specimenPart.faces
 allFacesRegion = regionToolset.Region(faces=specimenFaces)
@@ -281,9 +285,9 @@ specimenPart.generateMesh()
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Apply boundary conditions
 
-strainVector = [1.0, 0.0, 0.0]  # e11, e22, e12
+displacements = [0.01, 0.0]  # e11, e22
 periodicBC(modelName=modelName, xmin=xMin, ymin=yMin, xmax=xMax, ymax=yMax,
-           strain=strainVector)
+           dispVector=displacements)
 
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
@@ -295,10 +299,25 @@ mdb.Job(atTime=None, contactPrint=OFF, description='', echoPrint=OFF,
     multiprocessingMode=DEFAULT, name=modelName, nodalOutputPrecision=SINGLE, 
     numCpus=1, queue=None, scratch='', type=ANALYSIS, userSubroutine='', 
     waitHours=0, waitMinutes=0)
+mdb.jobs[modelName].submit(consistencyChecking=OFF)
+mdb.jobs[modelName].waitForCompletion()
 
-# # Change to assembly view and hide all datums
-# session.viewports['Viewport: 1'].assemblyDisplay.setValues(
-#         optimizationTasks=OFF, geometricRestrictions=OFF, stopConditions=OFF)
-# leaf = dgm.LeafFromDatums(laminateAssembly.datums.values())
-# session.viewports['Viewport: 1'].partDisplay.displayGroup.remove(leaf=leaf)
-# session.viewports['Viewport: 1'].view.setValues(session.views['Iso'])
+# IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
+# Post processing
+
+# Open the Output Database for the current Job
+odb = openOdb(path='{}.odb'.format(modelName))
+
+frame = odb.steps['Loading Step'].frames[-1]
+rfFieldOutput = frame.fieldOutputs['RF']
+uFieldOutput = frame.fieldOutputs['U']
+masterNode1 = odb.rootAssembly.nodeSets['MASTERNODE1']
+masterNode2 = odb.rootAssembly.nodeSets['MASTERNODE2']
+rfMasterNode1 = rfFieldOutput.getSubset(region=masterNode1)
+uMasterNode1 = uFieldOutput.getSubset(region=masterNode1)
+
+rf1 = rfMasterNode1.values[0].data[0]
+u1 = uMasterNode1.values[0].data[0]
+
+E11 = ((rf1/(laminateThickness*specimenHeight)) / (u1/specimenWidth))
+print E11

@@ -1,6 +1,6 @@
 from sys import path
 path.append(r'C:\Python27\Lib\site-packages')
-path.append(r"C:\Users\rutge\Documents\GitHub\interlaced_model_creation\working\MMS_RVE")
+path.append(r"C:\Users\rutge\Documents\GitHub\interlaced_model_creation\editing\MMS_RVE_NoUndulation")
 from shapely.geometry import Point, Polygon, LineString
 from shapely import affinity
 from abaqus import *
@@ -66,7 +66,7 @@ laminateModel = mdb.models[modelName]
 laminateAssembly = laminateModel.rootAssembly
 
 # set the work directory
-wd = 'C:\\Workspace\\MMS_RVE\\{}'.format(modelName)
+wd = 'C:\\Workspace\\MMS_RVE_NoUndulation\\{}'.format(modelName)
 if not os.path.exists(wd):
     os.makedirs(wd)
 os.chdir(wd)
@@ -111,26 +111,6 @@ resinMaterial.Density(table=((1.1e-06, ), ))
 resinSection = laminateModel.HomogeneousSolidSection(
         name='Resin Section', material='Resin')
 
-# Determine stiffness of undulation regions using analytical model
-# Adapted from Chou et al. 1972
-
-n = 200  # for analytic model discretization
-interfaceAngleCombos = [(0, ang) for ang in laminateAngles if ang != 0]
-for combo in interfaceAngleCombos:
-    matName = 'Undulation {}'.format(combo)
-    O1 = math.radians(combo[1])  # in-plane angle of bottom ply
-    O2 = math.radians(combo[0])  # in-plane angle of undulating ply
-    Clamina = analyticStiffness.CFromConstants(E11, E22, nu12, nu23, G12, G23)
-    Vfrac, a = analyticStiffness.undulationGeometry(cpt, uw, n)
-    CIsostrain, CIsostress = analyticStiffness.determineStiffness(
-        Clamina, a, O1, O2, Vfrac, n)
-    engConstants = analyticStiffness.engineeringConstants(CIsostrain)
-    matProps = engConstants
-    undMaterial = laminateModel.Material(name=matName)
-    undMaterial.Elastic(type=ENGINEERING_CONSTANTS, table=(matProps, ))
-    undMaterial.Density(table=((density, ), ))
-    undulationSection = laminateModel.HomogeneousSolidSection(
-            name=matName + ' Section', material=matName)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Create step
@@ -263,9 +243,7 @@ for objID, obj in partGrid[1].iteritems():
         objType = layerObj.objectType
         objAngle = layerObj.angle[-1]
         if objType == 'Undulation':
-            interfaceAngle = abs(layerObj.angle[0] - layerObj.angle[1])
-            secAngle = (0, interfaceAngle)
-            material = 'Undulation {}'.format(secAngle)
+            material = 'Tape'
         else:
             material = objType
         nameOfPly = 'Ply-{}'.format(layerNumber)
@@ -305,31 +283,31 @@ periodicBC(modelName=modelName, xmin=xMin, ymin=yMin, xmax=xMax, ymax=yMax,
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Job
 
-# mdb.Job(atTime=None, contactPrint=OFF, description='', echoPrint=OFF, 
-#         explicitPrecision=SINGLE, getMemoryFromAnalysis=True, historyPrint=OFF, 
-#         memory=90, memoryUnits=PERCENTAGE, model=modelName, modelPrint=OFF, 
-#         multiprocessingMode=DEFAULT, name=modelName,
-#         nodalOutputPrecision=SINGLE, numCpus=1, queue=None, scratch='',
-#         type=ANALYSIS, userSubroutine='', waitHours=0, waitMinutes=0)
-# mdb.jobs[modelName].submit(consistencyChecking=OFF)
-# mdb.jobs[modelName].waitForCompletion()
+mdb.Job(atTime=None, contactPrint=OFF, description='', echoPrint=OFF, 
+        explicitPrecision=SINGLE, getMemoryFromAnalysis=True, historyPrint=OFF, 
+        memory=90, memoryUnits=PERCENTAGE, model=modelName, modelPrint=OFF, 
+        multiprocessingMode=DEFAULT, name=modelName,
+        nodalOutputPrecision=SINGLE, numCpus=1, queue=None, scratch='',
+        type=ANALYSIS, userSubroutine='', waitHours=0, waitMinutes=0)
+mdb.jobs[modelName].submit(consistencyChecking=OFF)
+mdb.jobs[modelName].waitForCompletion()
 
-# # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
-# # Post processing
+# IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
+# Post processing
 
-# # Open the Output Database for the current Job
-# odb = openOdb(path='{}.odb'.format(modelName))
+# Open the Output Database for the current Job
+odb = openOdb(path='{}.odb'.format(modelName))
 
-# frame = odb.steps['Loading Step'].frames[-1]
-# rfFieldOutput = frame.fieldOutputs['RF']
-# uFieldOutput = frame.fieldOutputs['U']
-# masterNode1 = odb.rootAssembly.nodeSets['MASTERNODE1']
-# masterNode2 = odb.rootAssembly.nodeSets['MASTERNODE2']
-# rfMasterNode1 = rfFieldOutput.getSubset(region=masterNode1)
-# uMasterNode1 = uFieldOutput.getSubset(region=masterNode1)
+frame = odb.steps['Loading Step'].frames[-1]
+rfFieldOutput = frame.fieldOutputs['RF']
+uFieldOutput = frame.fieldOutputs['U']
+masterNode1 = odb.rootAssembly.nodeSets['MASTERNODE1']
+masterNode2 = odb.rootAssembly.nodeSets['MASTERNODE2']
+rfMasterNode1 = rfFieldOutput.getSubset(region=masterNode1)
+uMasterNode1 = uFieldOutput.getSubset(region=masterNode1)
 
-# rf1 = rfMasterNode1.values[0].data[0]
-# u1 = uMasterNode1.values[0].data[0]
+rf1 = rfMasterNode1.values[0].data[0]
+u1 = uMasterNode1.values[0].data[0]
 
-# E11 = ((rf1/(laminateThickness*specimenHeight)) / (u1/specimenWidth))
-# print E11
+E11 = ((rf1/(laminateThickness*specimenHeight)) / (u1/specimenWidth))
+print E11

@@ -131,21 +131,24 @@ def periodicBC(modelName, xmin, ymin, xmax, ymax, dispVector):
                              terms=((1.0, 'Specimen.MasterFace13-'+str(j), 2),
                                     (-1.0, 'Specimen.SlaveFace13-'+str(j), 2),
                                     (1.0, 'MasterNode1', 2)))
-
     # Apply BCs to master nodes
-    activeModel.DisplacementBC(amplitude=UNSET, createStepName='Loading Step', 
-                               distributionType=UNIFORM, fieldName='',
-                               fixed=OFF, localCsys=None, name='BC-13',
-                               region=masterNodeRegion1, u1=dispVector[0],
-                               u2=UNSET, ur3=UNSET)    
-
-    activeModel.DisplacementBC(amplitude=UNSET, createStepName='Loading Step', 
-                               distributionType=UNIFORM, fieldName='',
-                               fixed=OFF, localCsys=None, name='BC-24',
-                               region=masterNodeRegion2, u1=UNSET,
-                               u2=dispVector[1], ur3=UNSET)    
+    if dispVector[0]:
+        activeModel.DisplacementBC(amplitude=UNSET,
+                                   createStepName='Loading Step',
+                                   distributionType=UNIFORM, fieldName='',
+                                   fixed=OFF, localCsys=None, name='BC-13',
+                                   region=masterNodeRegion1, u1=dispVector[0],
+                                   u2=UNSET, ur3=UNSET)
+    if dispVector[1]:
+        activeModel.DisplacementBC(amplitude=UNSET,
+                                   createStepName='Loading Step',
+                                   distributionType=UNIFORM, fieldName='',
+                                   fixed=OFF, localCsys=None, name='BC-24',
+                                   region=masterNodeRegion2, u1=UNSET,
+                                   u2=dispVector[1], ur3=UNSET)
 
     activeModel.rootAssembly.regenerate()
+
 
 
 def TakeVertexOut(face):

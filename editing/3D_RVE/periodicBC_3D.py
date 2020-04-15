@@ -110,20 +110,21 @@ def periodicBC(modelName, dimensions, dispVector):
     dis = [UNSET, ] * 6
     for ind, s in enumerate(dispVector):
         if s:
+            dis = [0.0, ] * 6
             dis[ind] = s
-            if ind < 2:
-                bcRegion = masterNodeRegion1
-            elif ind >= 2 and ind < 4:
-                bcRegion = masterNodeRegion2
-            else:
-                bcRegion = masterNodeRegion3
-            activeModel.VelocityBC(name='BC-{}'.format(ind),
-                                   createStepName='Loading Step',
-                                   region=bcRegion, v1=dis[0], v2=dis[1],
-                                   v3=dis[2], vr1=dis[3], vr2=dis[4],
-                                   vr3=dis[5], amplitude='Smoothing Amplitude',
-                                   localCsys=None, distributionType=UNIFORM,
-                                   fieldName='')
+        if ind < 2:
+            bcRegion = masterNodeRegion1
+        elif ind >= 2 and ind < 4:
+            bcRegion = masterNodeRegion2
+        else:
+            bcRegion = masterNodeRegion3
+        activeModel.VelocityBC(name='BC-{}'.format(ind),
+                                createStepName='Loading Step',
+                                region=bcRegion, v1=dis[0], v2=dis[1],
+                                v3=dis[2], vr1=dis[3], vr2=dis[4],
+                                vr3=dis[5], amplitude='Smoothing Amplitude',
+                                localCsys=None, distributionType=UNIFORM,
+                                fieldName='')
 
     activeModel.rootAssembly.regenerate()
 

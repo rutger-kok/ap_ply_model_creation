@@ -11,7 +11,7 @@ import analyticStiffness
 import math
 import ast
 from shapely.geometry import Polygon
-from periodicBC_3D import periodicBC
+from periodicBC_3D_Miguel import periodicBC
 
 session.viewports['Viewport: 1'].setValues(displayedObject=None)
 
@@ -327,5 +327,5 @@ for interact in laminateModel.interactions.values():
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Apply boundary conditions
 
-dispVector = [0.001, None, None, None, None, None]
+dispVector = [0.001, UNSET, UNSET]
 periodicBC(modelName, dimensions, dispVector)

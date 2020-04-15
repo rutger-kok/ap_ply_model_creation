@@ -51,32 +51,12 @@ def periodicBC(modelName, dimensions, dispVector):
     # Creating vertices
     createVertexSet(asmbly, 'C1', xMax, yMax, zMax)
     createVertexSet(asmbly, 'C2', xMin, yMax, zMax)
-    createVertexSet(asmbly, 'C3', xMin, yMax, zMin)
+    createVertexSet(asmbly, 'MasterNode2', xMin, yMax, zMin)
     createVertexSet(asmbly, 'C4', xMax, yMax, zMin)
     createVertexSet(asmbly, 'C5', xMax, yMin, zMax)
-    createVertexSet(asmbly, 'C6', xMin, yMin, zMax)
-    createVertexSet(asmbly, 'C7', xMin, yMin, zMin)
-    createVertexSet(asmbly, 'C8', xMax, yMin, zMin)
-
-    # Create master nodes to impose BCs on
-    masterNode1ID = asmbly.ReferencePoint(point=(xMid, yMid, zMax + 1.0)).id
-    masterNode2ID = asmbly.ReferencePoint(point=(xMid, yMid, zMax + 2.0)).id
-    masterNode3ID = asmbly.ReferencePoint(point=(xMid, yMid, zMax + 3.0)).id
-    masterNode1 = asmbly.referencePoints[masterNode1ID]
-    masterNode2 = asmbly.referencePoints[masterNode2ID]
-    masterNode3 = asmbly.referencePoints[masterNode3ID]
-    masterNodeSet1 = asmbly.Set(referencePoints=(masterNode1, ),
-                                name='MasterNode1')
-    masterNodeSet2 = asmbly.Set(referencePoints=(masterNode2, ),
-                                name='MasterNode2')
-    masterNodeSet3 = asmbly.Set(referencePoints=(masterNode3, ),
-                                name='MasterNode3')
-    masterNodeRegion1 = Region(
-        referencePoints=(asmbly.referencePoints[masterNode1ID], ))
-    masterNodeRegion2 = Region(
-        referencePoints=(asmbly.referencePoints[masterNode1ID], ))
-    masterNodeRegion3 = Region(
-        referencePoints=(asmbly.referencePoints[masterNode3ID], ))
+    createVertexSet(asmbly, 'MasterNode3', xMin, yMin, zMax)
+    createVertexSet(asmbly, 'MasterNode0', xMin, yMin, zMin)
+    createVertexSet(asmbly, 'MasterNode1', xMax, yMin, zMin)
 
     # Construction equations for pairs of nodes
     # Faces
@@ -94,17 +74,33 @@ def periodicBC(modelName, dimensions, dispVector):
     matchNodes(modelName, 'BmL', 'BmR', (0, 0, 1), (0, 0, -1))
     matchNodes(modelName, 'BmR', 'TR', (0, 1, 0), (0, 1, 0))
     # Vertices
-    matchNodes(modelName, 'C6', 'C2', (0, 1, 0), (0, 1, 0))
-    matchNodes(modelName, 'C2', 'C3', (0, 0, 1), (0, 0, -1))
-    matchNodes(modelName, 'C3', 'C4', (1, 0, 0), (1, 0, 0))
-    matchNodes(modelName, 'C4', 'C8', (0, 1, 0), (0, -1, 0))
-    matchNodes(modelName, 'C8', 'C5', (0, 0, 1), (0, 0, 1))
+    # matchNodes(modelName, 'MasterNode3', 'C2', (0, 1, 0), (0, 1, 0))
+    # matchNodes(modelName, 'C2', 'MasterNode2', (0, 0, 1), (0, 0, -1))
+    # matchNodes(modelName, 'MasterNode2', 'C4', (1, 0, 0), (1, 0, 0))
+    # matchNodes(modelName, 'C4', 'MasterNode1', (0, 1, 0), (0, -1, 0))
+    # matchNodes(modelName, 'MasterNode1', 'C5', (0, 0, 1), (0, 0, 1))
     matchNodes(modelName, 'C5', 'C1', (0, 1, 0), (0, 1, 0))
-    matchNodes(modelName, 'C1', 'C7', (1, 1, 1), (-1.0, -1.0, -1.0))
+    # matchNodes(modelName, 'C1', 'MasterNode0', (1, 1, 1), (-1.0, -1.0, -1.0))
+    matchNodes(modelName, 'C1', 'C2', (1, 0, 0), (-1, 0, 0))
+    matchNodes(modelName, 'C1', 'C4', (0, 0, 1), (0, 0, -1))
+    
 
     activeModel.SmoothStepAmplitude(name='Smoothing Amplitude',
                                     timeSpan=STEP,
                                     data=((0.0, 0.0), (1e-05, 1.0)))
+
+    masterNodeRegion0 = Region(vertices=asmbly.sets['MasterNode0'])
+    masterNodeRegion1 = Region(vertices=asmbly.sets['MasterNode1'])
+    masterNodeRegion2 = Region(vertices=asmbly.sets['MasterNode2'])
+    masterNodeRegion3 = Region(vertices=asmbly.sets['MasterNode3'])
+
+    activeModel.DisplacementBC(name='Fix MasterNode0',
+                               createStepName='Loading Step',
+                               region=masterNodeRegion0, u1=0.0, u2=0.0,
+                               u3=0.0, ur1=UNSET, ur2=UNSET, ur3=UNSET,
+                               amplitude=UNSET, fixed=OFF,
+                               distributionType=UNIFORM, fieldName='',
+                               localCsys=None)
 
     # Apply BCs to master nodes
     for ind, s in enumerate(dispVector):

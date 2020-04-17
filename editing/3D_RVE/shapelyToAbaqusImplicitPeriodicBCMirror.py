@@ -11,7 +11,7 @@ import analyticStiffness
 import math
 import ast
 from shapely.geometry import Polygon
-from periodicBC_3D import periodicBC
+from periodicBC_3D_Implicit import periodicBC
 
 session.viewports['Viewport: 1'].setValues(displayedObject=None)
 
@@ -100,11 +100,9 @@ density = 1.59e-06
 
 tapeMaterial = laminateModel.Material(name='Tape')
 tapeMaterial.Density(table=((density, ), ))
-tapeMaterial.Depvar(deleteVar=20, n=24)
-tapeMaterial.UserMaterial(
-    mechanicalConstants=(E11, E22, E33, nu12, nu13, nu23, G12, G13,
-                         G23, Xt, Xc, Yt, Yc, Sl, alpha0, G1Plus,
-                         G1Minus, G2Plus, G2Minus, G6))
+tapeMaterial.Elastic(type=ENGINEERING_CONSTANTS,
+                     table=((E11, E22, E33, nu12, nu13, nu23, G12, G13,
+                             G23), ))
 tapeSection = laminateModel.HomogeneousSolidSection(name='Tape Section',
                                                     material='Tape')
 
@@ -131,11 +129,8 @@ for combo in interfaceAngleCombos:
     CIsostrain, CIsostress = analyticStiffness.determineStiffness(
         Clamina, a, O1, O2, Vfrac, n)
     engConstants = analyticStiffness.engineeringConstants(CIsostrain)
-    matProps = engConstants + [2.61, 1.759, 0.055, 0.285, 0.105, 53.0, 0.1,
-                               0.1, 0.00075, 0.0025, 0.0035]
     undMaterial = laminateModel.Material(name=matName)
-    undMaterial.Depvar(deleteVar=20, n=24)
-    undMaterial.UserMaterial(mechanicalConstants=matProps)
+    undMaterial.Elastic(type=ENGINEERING_CONSTANTS, table=(engConstants, ))
     undMaterial.Density(table=((density, ), ))
     undulationSection = laminateModel.HomogeneousSolidSection(
         name=matName + ' Section', material=matName)
@@ -144,15 +139,11 @@ for combo in interfaceAngleCombos:
 # Create step
 
 # create step
-laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial',
-                                   timePeriod=2.5,
-                                   massScaling=((SEMI_AUTOMATIC, MODEL,
-                                                 THROUGHOUT_STEP, 0.0, 1e-06,
-                                                 BELOW_MIN, 1, 0, 0.0, 0.0, 0,
-                                                 None), ))
+laminateModel.StaticStep(name='Loading Step', previous='Initial', 
+                         initialInc=0.1)
 
 # Modify field output request
-laminateModel.fieldOutputRequests['F-Output-1'].setValues(numIntervals=100)
+laminateModel.fieldOutputRequests['F-Output-1'].setValues(numIntervals=25)
 
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
@@ -270,59 +261,16 @@ for (pathNumber, tapePath) in enumerate(tapePaths):
             startNodeNum += len(passPart.nodes)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
-# Create cohesive zone interactions between faces of the assembly
-# Calculate CZM parameters according to Turon 2007 (sort of...)
+# Create tie constraints between tapes
 
-alpha = 50
-E_33 = tapeMaterial.userMaterial.mechanicalConstants[2]
-K = (alpha * E_33) / cpt
-
-# define contact properties
-laminateModel.ContactProperty('Tangential')
-laminateModel.interactionProperties['Tangential'].TangentialBehavior(
-    formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF,
-    pressureDependency=OFF, temperatureDependency=OFF, dependencies=0,
-    table=((0.15, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION,
-    fraction=0.005, elasticSlipStiffness=None)
-laminateModel.interactionProperties['Tangential'].NormalBehavior(
-    pressureOverclosure=HARD, allowSeparation=ON,
-    constraintEnforcementMethod=DEFAULT)
-laminateModel.ContactProperty('Cohesive')
-laminateModel.interactionProperties['Cohesive'].CohesiveBehavior(
-    defaultPenalties=OFF, table=((K, K, K), ))
-laminateModel.interactionProperties['Cohesive'].Damage(
-    criterion=QUAD_TRACTION, initTable=((0.055, 0.09, 0.09), ),
-    useEvolution=ON, evolutionType=ENERGY, useMixedMode=ON,
-    mixedModeType=POWER_LAW, exponent=1.0,
-    evolTable=((3.52e-4, 3.52e-4, 3.52e-4), ))
 
 # determine contacts
-laminateModel.contactDetection(defaultType=CONTACT,
-                               interactionProperty='Cohesive',
+laminateModel.contactDetection(defaultType=TIE,
                                nameEachSurfaceFound=OFF,
                                createUnionOfMasterSurfaces=ON,
                                createUnionOfSlaveSurfaces=ON,
                                separationTolerance=cpt / 200.0)
 
-# convert individual contact interactions to a single interaction with
-# each contact defined as an 'Individual Property Assignment'
-laminateModel.ContactExp(name='GC', createStepName='Initial')
-laminateModel.interactions['GC'].includedPairs.setValuesInStep(
-    stepName='Initial', useAllstar=ON)
-laminateModel.interactions['GC'].contactPropertyAssignments.appendInStep(
-        stepName='Initial', assignments=((GLOBAL, SELF, 'Tangential'), ))
-for interact in laminateModel.interactions.values():
-    if interact.name == 'GC':
-        continue
-    else:
-        masterName = interact.master[0]
-        slaveName = interact.slave[0]
-        masterSurf = laminateAssembly.surfaces[masterName]
-        slaveSurf = laminateAssembly.surfaces[slaveName]
-        laminateModel.interactions['GC'].contactPropertyAssignments.appendInStep(
-            stepName='Initial',
-            assignments=((masterSurf, slaveSurf, 'Cohesive'), ))
-        del laminateModel.interactions['{}'.format(interact.name)]
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Apply boundary conditions

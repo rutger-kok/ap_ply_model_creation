@@ -109,13 +109,13 @@ def periodicBC(modelName, dimensions, dispVector):
         elif s:
             dis[ind] = s
         bcRegion = asmbly.sets['MasterNode{}'.format(ind + 1)]
-        activeModel.VelocityBC(name='BC-{}'.format(ind),
-                               createStepName='Loading Step',
-                               region=bcRegion, v1=dis[0], v2=dis[1],
-                               v3=dis[2], vr1=UNSET, vr2=UNSET,
-                               vr3=UNSET, amplitude='Smoothing Amplitude',
-                               localCsys=None, distributionType=UNIFORM,
-                               fieldName='')
+        activeModel.DisplacementBC(name='BC-{}'.format(ind),
+                                   createStepName='Loading Step',
+                                   region=bcRegion, u1=dis[0], u2=dis[1],
+                                   u3=dis[2], ur1=UNSET, ur2=UNSET,
+                                   ur3=UNSET, amplitude=UNSET, fixed=OFF,
+                                   localCsys=None, distributionType=UNIFORM,
+                                   fieldName='')
 
     activeModel.rootAssembly.regenerate()
 

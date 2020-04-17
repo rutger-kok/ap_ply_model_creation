@@ -307,7 +307,7 @@ specimenInstance = laminateAssembly.Instance(
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Apply boundary conditions
 
-dispVector = [0.001, UNSET, UNSET]
+dispVector = [0.01, UNSET, UNSET]
 periodicBC(modelName, dimensions, dispVector)
 for x in range(1,4):
     region=laminateAssembly.sets['MasterNode{}'.format(x)]

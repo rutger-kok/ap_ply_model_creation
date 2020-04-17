@@ -89,37 +89,27 @@ def periodicBC(modelName, dimensions, dispVector):
                                     timeSpan=STEP,
                                     data=((0.0, 0.0), (1e-05, 1.0)))
 
-    masterNodeRegion0 = Region(vertices=asmbly.sets['MasterNode0'])
-    masterNodeRegion1 = Region(vertices=asmbly.sets['MasterNode1'])
-    masterNodeRegion2 = Region(vertices=asmbly.sets['MasterNode2'])
-    masterNodeRegion3 = Region(vertices=asmbly.sets['MasterNode3'])
-
     activeModel.DisplacementBC(name='Fix MasterNode0',
                                createStepName='Loading Step',
-                               region=masterNodeRegion0, u1=0.0, u2=0.0,
-                               u3=0.0, ur1=UNSET, ur2=UNSET, ur3=UNSET,
-                               amplitude=UNSET, fixed=OFF,
-                               distributionType=UNIFORM, fieldName='',
-                               localCsys=None)
+                               region=asmbly.sets['MasterNode0'],
+                               u1=0.0, u2=0.0, u3=0.0, ur1=UNSET,
+                               ur2=UNSET, ur3=UNSET, amplitude=UNSET,
+                               fixed=OFF, distributionType=UNIFORM,
+                               fieldName='', localCsys=None)
 
     # Apply BCs to master nodes
     for ind, s in enumerate(dispVector):
         dis = [0, ] * 3
         if s:
             dis[ind] = s
-        if ind < 2:
-            bcRegion = masterNodeRegion1
-        elif ind >= 2 and ind < 4:
-            bcRegion = masterNodeRegion2
-        else:
-            bcRegion = masterNodeRegion3
+        reg = asmbly.sets['MasterNode{}'.format(ind+1)]
         activeModel.VelocityBC(name='BC-{}'.format(ind),
-                                createStepName='Loading Step',
-                                region=bcRegion, v1=dis[0], v2=dis[1],
-                                v3=dis[2], vr1=UNSET, vr2=UNSET,
-                                vr3=UNSET, amplitude='Smoothing Amplitude',
-                                localCsys=None, distributionType=UNIFORM,
-                                fieldName='')
+                               createStepName='Loading Step',
+                               region=reg, v1=dis[0], v2=dis[1], v3=dis[2],
+                               vr1=UNSET, vr2=UNSET, vr3=UNSET,
+                               amplitude='Smoothing Amplitude',
+                               localCsys=None, distributionType=UNIFORM,
+                               fieldName='')
 
     activeModel.rootAssembly.regenerate()
 

@@ -154,31 +154,31 @@ def matchNodes(modelName, masterSet, slaveSet, masterNodes, coeff):
     set2Coords = [(node, node.coordinates[0], node.coordinates[1],
                    node.coordinates[2]) for node in set2Nodes]
     for i, mNode in enumerate(masterNodes):
-        if mNode:
-            s = [c + 1 for c in [0, 1, 2] if c != i]
-            set1Sorted = sorted(set1Coords, key=lambda k: [k[s[0]], k[s[1]]])
-            set2Sorted = sorted(set2Coords, key=lambda k: [k[s[0]], k[s[1]]])
-            print len(set1Sorted), len(set2Sorted)
-            for j, node1 in enumerate(set1Sorted):
-                node2 = set2Sorted[j]  # matched node in second set
-                masterInstance = assembly.instances[node1[0].instanceName]
-                slaveInstance = assembly.instances[node2[0].instanceName]
-                slaveName = 'Slave-{}-{}-{}'.format(masterSet, slaveSet, j)
-                masterName = 'Master-{}-{}-{}'.format(masterSet, slaveSet, j)
-                siNodes = slaveInstance.nodes  # slave instance nodes
-                miNodes = masterInstance.nodes  # master instance nodes
-                snl = node2[0].label  # slave node label
-                mnl = node1[0].label  # master node label
-                assembly.Set(name=slaveName,
-                             nodes=siNodes.sequenceFromLabels(((snl), ), ))
-                assembly.Set(name=masterName,
-                             nodes=miNodes.sequenceFromLabels(((mnl), ), ))
-                for dof in (1, 2, 3):
-                    eqnName = '{}-{}-{}-{}'.format(masterSet, slaveSet, j, dof)
-                    mNode = 'MasterNode{}'.format(i + 1)
-                    if i > 0:
-                        eqnName = eqnName + '-' + str(i)
-                    model.Equation(name=eqnName,
-                                   terms=((1.0, slaveName, dof),
-                                          (-1.0, masterName, dof),
-                                          (coeff[i], mNode, dof)))
+        s = [c + 1 for c in [0, 1, 2] if c != i]
+        set1Sorted = sorted(set1Coords, key=lambda k: [k[s[0]], k[s[1]]])
+        set2Sorted = sorted(set2Coords, key=lambda k: [k[s[0]], k[s[1]]])
+        for j, node1 in enumerate(set1Sorted):
+            node2 = set2Sorted[j]  # matched node in second set
+            masterInstance = assembly.instances[node1[0].instanceName]
+            slaveInstance = assembly.instances[node2[0].instanceName]
+            slaveName = 'Slave-{}-{}-{}'.format(masterSet, slaveSet, j)
+            masterName = 'Master-{}-{}-{}'.format(masterSet, slaveSet, j)
+            siNodes = slaveInstance.nodes  # slave instance nodes
+            miNodes = masterInstance.nodes  # master instance nodes
+            snl = node2[0].label  # slave node label
+            mnl = node1[0].label  # master node label
+            assembly.Set(name=slaveName,
+                         nodes=siNodes.sequenceFromLabels(((snl), ), ))
+            assembly.Set(name=masterName,
+                         nodes=miNodes.sequenceFromLabels(((mnl), ), ))
+            eqnName = '{}-{}-{}-{}'.format(masterSet, slaveSet, j, i)
+            mNode = 'MasterNode{}'.format(i + 1)
+            if mNode:
+                model.Equation(name=eqnName,
+                               terms=((1.0, slaveName, i),
+                                      (-1.0, masterName, i),
+                                      (coeff[i], mNode, i)))
+            else:
+                model.Equation(name=eqnName,
+                               terms=((1.0, slaveName, i),
+                                      (-1.0, masterName, i)))

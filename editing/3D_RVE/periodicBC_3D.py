@@ -107,24 +107,18 @@ def periodicBC(modelName, dimensions, dispVector):
                                     data=((0.0, 0.0), (1e-05, 1.0)))
 
     # Apply BCs to master nodes
-    dis = [UNSET, ] * 6
     for ind, s in enumerate(dispVector):
+        dis = [0, ] * 3
         if s:
-            dis = [0.0, ] * 6
             dis[ind] = s
-        if ind < 2:
-            bcRegion = masterNodeRegion1
-        elif ind >= 2 and ind < 4:
-            bcRegion = masterNodeRegion2
-        else:
-            bcRegion = masterNodeRegion3
+        reg = asmbly.sets['MasterNode{}'.format(ind+1)]
         activeModel.VelocityBC(name='BC-{}'.format(ind),
-                                createStepName='Loading Step',
-                                region=bcRegion, v1=dis[0], v2=dis[1],
-                                v3=dis[2], vr1=dis[3], vr2=dis[4],
-                                vr3=dis[5], amplitude='Smoothing Amplitude',
-                                localCsys=None, distributionType=UNIFORM,
-                                fieldName='')
+                               createStepName='Loading Step',
+                               region=reg, v1=dis[0], v2=dis[1], v3=dis[2],
+                               vr1=UNSET, vr2=UNSET, vr3=UNSET,
+                               amplitude='Smoothing Amplitude',
+                               localCsys=None, distributionType=UNIFORM,
+                               fieldName='')
 
     activeModel.rootAssembly.regenerate()
 

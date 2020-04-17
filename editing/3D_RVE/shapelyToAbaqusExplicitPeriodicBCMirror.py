@@ -56,7 +56,7 @@ partGrid = sigc.createGrids(tapeAngles=laminateAngles, tapeWidths=tw,
 # identify parts in grid
 tapePaths = tp.laminateCreation(
     grid=partGrid, tapeAngles=laminateAngles, tapeWidths=tw,
-    tapeSpacing=1, undulationWidth=uw)
+    tapeSpacing=tapeSpace, undulationWidth=uw)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model name
@@ -121,7 +121,7 @@ resinSection = laminateModel.HomogeneousSolidSection(name='Resin Section',
 # Adapted from Chou et al. 1972
 
 interfaceAngleCombos = [(0, ang) for ang in laminateAngles if ang != 0]
-n = 200
+n = 200  # for analytic model discretization
 for combo in interfaceAngleCombos:
     matName = 'Undulation {}'.format(combo)
     O1 = math.radians(combo[1])  # in-plane angle of bottom ply

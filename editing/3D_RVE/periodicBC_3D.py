@@ -12,7 +12,7 @@ Date: 15/04/2020
 """
 
 
-def periodicBC(modelName, dimensions, dispVector):
+def periodicBC(modelName, dimensions):
 
     activeModel = mdb.models[modelName]
     asmbly = activeModel.rootAssembly
@@ -96,27 +96,6 @@ def periodicBC(modelName, dimensions, dispVector):
     matchNodes(modelName, 'C5', 'C1', (0, 1, 0), (0, 1, 0))
     matchNodes(modelName, 'C1', 'C7', (1, 1, 1), (-1.0, -1.0, -1.0))
 
-    activeModel.SmoothStepAmplitude(name='Smoothing Amplitude',
-                                    timeSpan=STEP,
-                                    data=((0.0, 0.0), (1e-05, 1.0)))
-
-    # Apply BCs to master nodes
-
-    for ind, s in enumerate(dispVector):
-        dis = [0.0, ] * 3
-        if s == UNSET:
-            continue
-        elif s:
-            dis[ind] = s
-        bcRegion = asmbly.sets['MasterNode{}'.format(ind + 1)]
-        activeModel.VelocityBC(name='BC-{}'.format(ind),
-                               createStepName='Loading Step',
-                               region=bcRegion, v1=dis[0], v2=dis[1],
-                               v3=dis[2], vr1=UNSET, vr2=UNSET,
-                               vr3=UNSET, amplitude='Smoothing Amplitude',
-                               localCsys=None, distributionType=UNIFORM,
-                               fieldName='')
-
     activeModel.rootAssembly.regenerate()
 
 
@@ -174,12 +153,7 @@ def matchNodes(modelName, masterSet, slaveSet, masterNodes, coeff):
             dof = i + 1
             eqnName = '{}-{}-{}-{}'.format(masterSet, slaveSet, j, dof)
             mNode = 'MasterNode{}'.format(i + 1)
-            if mNode:
-                model.Equation(name=eqnName,
-                               terms=((1.0, slaveName, dof),
-                                      (-1.0, masterName, dof),
-                                      (coeff[i], mNode, dof)))
-            else:
-                model.Equation(name=eqnName,
-                               terms=((1.0, slaveName, dof),
-                                      (-1.0, masterName, dof)))
+            model.Equation(name=eqnName,
+                           terms=((1.0, slaveName, dof),
+                                  (-1.0, masterName, dof),
+                                  (coeff[i], mNode, dof)))

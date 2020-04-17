@@ -307,10 +307,33 @@ specimenInstance = laminateAssembly.Instance(
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Apply boundary conditions
 
+# Create PBC
+periodicBC(modelName, dimensions)
+
+# Apply BCs to master nodes
+
+laminateModel.SmoothStepAmplitude(name='Smoothing Amplitude',
+                                  timeSpan=STEP, 
+                                  data=((0.0, 0.0), (1e-05, 1.0)))
+
 dispVector = [0.01, UNSET, UNSET]
-periodicBC(modelName, dimensions, dispVector)
-for x in range(1,4):
-    region=laminateAssembly.sets['MasterNode{}'.format(x)]
+for ind, s in enumerate(dispVector):
+    dis = [0.0, ] * 3
+    if s == UNSET:
+        continue
+    elif s:
+        dis[ind] = s
+    bcRegion = laminateAssembly.sets['MasterNode{}'.format(ind + 1)]
+    laminateModel.VelocityBC(name='BC-{}'.format(ind),
+                             createStepName='Loading Step',
+                             region=bcRegion, v1=dis[0], v2=dis[1],
+                             v3=dis[2], vr1=UNSET, vr2=UNSET,
+                             vr3=UNSET, amplitude='Smoothing Amplitude',
+                             localCsys=None, distributionType=UNIFORM,
+                             fieldName='')
+
+for x in range(1, 4):
+    region = laminateAssembly.sets['MasterNode{}'.format(x)]
     laminateAssembly.engineeringFeatures.PointMassInertia(
         name='Inertia-{}'.format(x), region=region, mass=1e-06, alpha=0.0,
         composite=0.0)

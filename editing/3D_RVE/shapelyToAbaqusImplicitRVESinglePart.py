@@ -325,18 +325,18 @@ periodicBC(modelName, dimensions, dispVector)
 # # Post processing
 
 # Open the Output Database for the current Job
-# odb = openOdb(path='{}.odb'.format(modelName))
+odb = openOdb(path='{}.odb'.format(modelName))
 
-# frame = odb.steps['Loading Step'].frames[-1]
-# rfFieldOutput = frame.fieldOutputs['RF']
-# uFieldOutput = frame.fieldOutputs['U']
-# masterNode1 = odb.rootAssembly.nodeSets['MASTERNODE1']
-# masterNode2 = odb.rootAssembly.nodeSets['MASTERNODE2']
-# rfMasterNode1 = rfFieldOutput.getSubset(region=masterNode1)
-# uMasterNode1 = uFieldOutput.getSubset(region=masterNode1)
+frame = odb.steps['Loading Step'].frames[-1]
+rfFieldOutput = frame.fieldOutputs['RF']
+uFieldOutput = frame.fieldOutputs['U']
+masterNode1 = odb.rootAssembly.nodeSets['MASTERNODE1']
+masterNode2 = odb.rootAssembly.nodeSets['MASTERNODE2']
+rfMasterNode1 = rfFieldOutput.getSubset(region=masterNode1)
+uMasterNode1 = uFieldOutput.getSubset(region=masterNode1)
 
-# rf1 = rfMasterNode1.values[0].dataDouble[0]
-# u1 = uMasterNode1.values[0].dataDouble[0]
+rf1 = rfMasterNode1.values[0].data[0]
+u1 = uMasterNode1.values[0].data[0]
 
-# E11 = ((rf1/(laminateThickness*specimenHeight)) / (u1/specimenWidth))
-# print E11
+E11 = ((rf1/(laminateThickness*specimenHeight)) / (u1/specimenWidth))
+print E11

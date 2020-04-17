@@ -171,14 +171,15 @@ def matchNodes(modelName, masterSet, slaveSet, masterNodes, coeff):
                          nodes=siNodes.sequenceFromLabels(((snl), ), ))
             assembly.Set(name=masterName,
                          nodes=miNodes.sequenceFromLabels(((mnl), ), ))
-            eqnName = '{}-{}-{}-{}'.format(masterSet, slaveSet, j, i)
+            dof = i + 1
+            eqnName = '{}-{}-{}-{}'.format(masterSet, slaveSet, j, dof)
             mNode = 'MasterNode{}'.format(i + 1)
             if mNode:
                 model.Equation(name=eqnName,
-                               terms=((1.0, slaveName, i),
-                                      (-1.0, masterName, i),
-                                      (coeff[i], mNode, i)))
+                               terms=((1.0, slaveName, dof),
+                                      (-1.0, masterName, dof),
+                                      (coeff[i], mNode, dof)))
             else:
                 model.Equation(name=eqnName,
-                               terms=((1.0, slaveName, i),
-                                      (-1.0, masterName, i)))
+                               terms=((1.0, slaveName, dof),
+                                      (-1.0, masterName, dof)))

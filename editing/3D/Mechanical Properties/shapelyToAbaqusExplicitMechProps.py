@@ -156,7 +156,9 @@ laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial',
                                                  None), ))
 
 # Modify field output request
-laminateModel.fieldOutputRequests['F-Output-1'].setValues(numIntervals=100)
+fieldOutput = laminateModel.fieldOutputRequests['F-Output-1']
+fieldOutput.setValues(variables=('S', 'LE', 'U', 'V', 'A', 'RF', 'CSTRESS',
+                                 'CSDMG', 'SDV', 'STATUS'), numIntervals=50)
 
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII

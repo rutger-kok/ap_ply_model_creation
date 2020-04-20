@@ -1,6 +1,6 @@
 from sys import path
 path.append(r'C:\Python27\Lib\site-packages')
-path.append(r"C:\Users\rutge\Documents\GitHub\interlaced_model_creation\editing\3D_RVE")
+path.append(r"C:\Users\rutge\Documents\GitHub\interlaced_model_creation\editing\3D\Mechanical Properties")
 from abaqus import *
 from abaqusConstants import *
 import regionToolset
@@ -11,13 +11,13 @@ import analyticStiffness
 import math
 import ast
 from shapely.geometry import Polygon
-from periodicBC_3D import periodicBC
 
 session.viewports['Viewport: 1'].setValues(displayedObject=None)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model parameters
-userInput = getInputs(fields=(('Laminate Angles (deg):', '(0, 90)'),
+userInput = getInputs(fields=(('Specimen Type: ', 'A'),
+                              ('Laminate Angles (deg):', '(0, 90)'),
                               ('Tape Width (mm):', '25'),
                               ('Tape Spacing (int):', '1'),
                               ('Cured Ply Thickness (mm):', '0.18'),
@@ -25,23 +25,29 @@ userInput = getInputs(fields=(('Laminate Angles (deg):', '(0, 90)'),
                       label='Please provide the following information',
                       dialogTitle='Model Parameters')
 
-laminateAngles = ast.literal_eval(userInput[0])  # define angles of tapes
-tapeWidth = float(userInput[1])
+specimenType = userInput[0]
+laminateAngles = ast.literal_eval(userInput[1])  # define angles of tapes
+tapeWidth = float(userInput[2])
 tw = (tapeWidth, ) * len(laminateAngles)  # tape widths
 # number of gaps between tapes in interlacing pattern
-tapeSpace = int(userInput[2])
+tapeSpace = int(userInput[3])
 # cured ply thickness e.g. 0.18125
-cpt = float(userInput[3])
+cpt = float(userInput[4])
 # ratio of undulation amplitude to length e.g. 0.090625
-undulationRatio = float(userInput[4])
+undulationRatio = float(userInput[5])
 uw = cpt / undulationRatio
 
-# define RVE dimensions
-xMin = yMin = -(tw[0] / 2.0)
-xMax = yMax = xMin + (tapeSpace + 1) * (tw[0])
+# define specimen dimensions
+if specimenType == 'A' or 'C':
+    xMin = -45.0 / 2.0
+    xMax = -xMin
+else:
+    xMin = -25.0
+    xMax = 25.0
+yMin = -75.0
+yMax = -yMin
 specimenHeight = yMax - yMin
 specimenWidth = xMax - xMin
-xMid = yMid = xMin + (specimenWidth / 2.0)
 numLayers = len(laminateAngles) * 2.0  # symmetric
 laminateThickness = numLayers * cpt
 zMax = laminateThickness / 2.0
@@ -61,16 +67,14 @@ tapePaths = tp.laminateCreation(
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model name
 
-ratioString = userInput[4].replace('.', '_')
-angleString = '-'.join([str(x) for x in laminateAngles])
-modelName = '{}--{}-{}-{}'.format(angleString, int(tw[0]), int(tapeSpace),
-                                  ratioString)
+ratioString = userInput[5].replace('.', '_')
+modelName = '{}-{}'.format(specimenType, ratioString)
 mdb.Model(name=modelName, modelType=STANDARD_EXPLICIT)
 laminateModel = mdb.models[modelName]
 laminateAssembly = laminateModel.rootAssembly
 
 # set the work directory
-wd = 'C:\\Workspace\\3D_RVE\\{}'.format(modelName)
+wd = 'C:\\Workspace\\3D_MechProps\\{}'.format(modelName)
 if not os.path.exists(wd):
     os.makedirs(wd)
 os.chdir(wd)
@@ -215,13 +219,6 @@ def definePart(obj, objectID):
     laminateAssembly.translate(instanceList=(instanceName, ),
                                vector=(0.0, 0.0, (obj.layer - 1) * cpt))
 
-    # create the mirror part instance
-    mirrorInstanceName = 'Mirror Instance {}'.format(uniqueID)
-    mirrorInstance = laminateAssembly.Instance(name=mirrorInstanceName,
-                                               part=objPart, dependent=ON)
-    laminateAssembly.translate(instanceList=(mirrorInstanceName, ),
-                               vector=(0.0, 0.0, -1 * (obj.layer) * cpt))
-
     # mesh the part instance
     global startElemNum, startNodeNum
     objPart.setValues(startNodeLabel=startNodeNum, startElemLabel=startElemNum)
@@ -242,32 +239,31 @@ for layerNumber in range(1, len(partGrid) + 1):
 # this section merges all the parts in a tapepath into one part
 for (pathNumber, tapePath) in enumerate(tapePaths):
     if len(tapePath) > 1:
-        for instType in ('', 'Mirror '):
-            layer, gridID = tapePath[0].split('-')
-            pathAngle = partGrid[int(layer)][int(gridID)].angle[-1]
-            searchStr = instType + 'Instance '
-            instanceList = [laminateAssembly.instances[searchStr + str(inst)]
-                            for inst in tapePath]
-            instanceName = '{}Pass {}'.format(instType, pathNumber)
-            laminateAssembly.InstanceFromBooleanMerge(name=instanceName,
-                instances=instanceList, keepIntersections=ON,
-                originalInstances=DELETE, mergeNodes=ALL,
-                nodeMergingTolerance=1e-06, domain=BOTH)
-            passPart = laminateModel.parts[instanceName]
-            passRegion = regionToolset.Region(cells=passPart.cells[:])
-            passPart.MaterialOrientation(region=passRegion,
-                                         orientationType=SYSTEM, axis=AXIS_3,
-                                         localCsys=None, fieldName='',
-                                         additionalRotationType=ROTATION_ANGLE,
-                                         additionalRotationField='',
-                                         angle=pathAngle,
-                                         stackDirection=STACK_3)
-            passPart.setValues(startNodeLabel=startNodeNum,
-                               startElemLabel=startElemNum)
-            passPart.seedPart(size=meshSize)
-            passPart.generateMesh()
-            startElemNum += len(passPart.elements)
-            startNodeNum += len(passPart.nodes)
+        layer, gridID = tapePath[0].split('-')
+        pathAngle = partGrid[int(layer)][int(gridID)].angle[-1]
+        instanceList = [laminateAssembly.instances['Instance ' + str(inst)]
+                        for inst in tapePath]
+        instanceName = 'Pass {}'.format(pathNumber)
+        laminateAssembly.InstanceFromBooleanMerge(name=instanceName,
+                                                  instances=instanceList,
+                                                  keepIntersections=ON,
+                                                  originalInstances=DELETE,
+                                                  mergeNodes=ALL,
+                                                  nodeMergingTolerance=1e-06,
+                                                  domain=BOTH)
+        passPart = laminateModel.parts[instanceName]
+        passRegion = regionToolset.Region(cells=passPart.cells[:])
+        passPart.MaterialOrientation(region=passRegion, orientationType=SYSTEM,
+                                     axis=AXIS_3, localCsys=None, fieldName='',
+                                     additionalRotationType=ROTATION_ANGLE,
+                                     additionalRotationField='',
+                                     angle=pathAngle, stackDirection=STACK_3)
+        passPart.setValues(startNodeLabel=startNodeNum,
+                           startElemLabel=startElemNum)
+        passPart.seedPart(size=meshSize)
+        passPart.generateMesh()
+        startElemNum += len(passPart.elements)
+        startNodeNum += len(passPart.nodes)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Create cohesive zone interactions between faces of the assembly
@@ -298,11 +294,9 @@ laminateModel.interactionProperties['Cohesive'].Damage(
 
 # determine contacts
 laminateModel.contactDetection(defaultType=CONTACT,
-                               interactionProperty='Cohesive',
-                               nameEachSurfaceFound=OFF,
-                               createUnionOfMasterSurfaces=ON,
-                               createUnionOfSlaveSurfaces=ON,
-                               separationTolerance=cpt / 200.0)
+    interactionProperty='Cohesive', nameEachSurfaceFound=OFF,
+    createUnionOfMasterSurfaces=ON, createUnionOfSlaveSurfaces=ON,
+    separationTolerance=cpt/200.0)
 
 # convert individual contact interactions to a single interaction with
 # each contact defined as an 'Individual Property Assignment'
@@ -327,5 +321,60 @@ for interact in laminateModel.interactions.values():
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Apply boundary conditions
 
-dispVector = [0.001, UNSET, UNSET]
-periodicBC(modelName, dimensions, dispVector)
+tol = 0.001
+# identify faces at top and bottom for coupling
+tFaces = [inst.faces.getByBoundingBox(xMin - tol, yMax - tol, zMin - tol,
+                                      xMax + tol, yMax + tol, zMax + tol)
+          for inst in laminateAssembly.instances.values()
+          if inst.faces.getByBoundingBox(xMin - tol, yMax - tol, zMin - tol,
+                                         xMax + tol, yMax + tol, zMax + tol)]
+tFacesSurface = laminateAssembly.Surface(side1Faces=tFaces, name='Top Faces')
+bFaces = [inst.faces.getByBoundingBox(xMin - tol, yMin - tol, zMin - tol,
+                                      xMax + tol, yMin + tol, zMax + tol)
+          for inst in laminateAssembly.instances.values()
+          if inst.faces.getByBoundingBox(xMin - tol, yMin - tol, zMin - tol,
+                                         xMax + tol, yMin + tol, zMax + tol)]
+bFacesSurface = laminateAssembly.Surface(side1Faces=bFaces, name='Bottom Faces')
+symFaces = [inst.faces.getByBoundingBox(xMin - tol, yMin - tol, -tol,
+                                        xMax + tol, yMax + tol, tol)
+            for inst in laminateAssembly.instances.values()
+            if inst.faces.getByBoundingBox(xMin - tol, yMin - tol, -tol,
+                                           xMax + tol, yMax + tol, tol)]
+symFacesSet = laminateAssembly.Set(faces=symFaces, name='Symmetry Faces')
+
+# create reference points for coupling
+rfPoint1Id = laminateAssembly.ReferencePoint(point=(0.0, yMax + 5.0, 0.0)).id
+rfPoint1 = laminateAssembly.referencePoints[rfPoint1Id]
+rfPoint1Region = laminateAssembly.Set(referencePoints=(rfPoint1,),
+                                      name='Coupling Reference Point 1')
+rfPoint2Id = laminateAssembly.ReferencePoint(point=(0.0, yMin - 5.0, 0.0)).id
+rfPoint2 = laminateAssembly.referencePoints[rfPoint2Id]
+rfPoint2Region = laminateAssembly.Set(referencePoints=(rfPoint2,),
+                                      name='Coupling Reference Point 2')
+
+laminateModel.Coupling(name='Top Coupling', controlPoint=rfPoint1Region,
+                       surface=tFacesSurface, influenceRadius=WHOLE_SURFACE,
+                       couplingType=KINEMATIC, localCsys=None, u1=ON, u2=ON,
+                       u3=ON, ur1=ON, ur2=ON, ur3=ON)
+
+laminateModel.Coupling(name='Bottom Coupling', controlPoint=rfPoint2Region,
+                       surface=bFacesSurface, influenceRadius=WHOLE_SURFACE,
+                       couplingType=KINEMATIC, localCsys=None, u1=ON, u2=ON,
+                       u3=ON, ur1=ON, ur2=ON, ur3=ON)
+
+# explicit
+laminateModel.SmoothStepAmplitude(name='Smoothing Amplitude', timeSpan=STEP,
+                                  data=((0.0, 0.0), (1e-05, 1.0)))
+laminateModel.DisplacementBC(name='Bottom Surface BC',
+                             createStepName='Loading Step',
+                             region=rfPoint2Region, u1=0.0, u2=0.0, u3=0.0,
+                             ur1=0.0, ur2=0.0, ur3=0.0, amplitude=UNSET,
+                             fixed=OFF, distributionType=UNIFORM, fieldName='',
+                             localCsys=None)
+laminateModel.VelocityBC(name='Top Surface BC', createStepName='Loading Step',
+                         region=rfPoint1Region, v1=UNSET, v2=0.02, v3=UNSET,
+                         vr1=UNSET, vr2=UNSET, vr3=UNSET,
+                         amplitude='Smoothing Amplitude', localCsys=None,
+                         distributionType=UNIFORM, fieldName='')
+laminateModel.ZsymmBC(name='Symmetry', createStepName='Loading Step',
+                      region=symFacesSet, localCsys=None)

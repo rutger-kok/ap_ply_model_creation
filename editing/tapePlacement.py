@@ -1,5 +1,6 @@
 import math
 import sigc
+from shapely.geometry import Polygon
 
 '''
 Define laminate using following parameters
@@ -19,7 +20,7 @@ with the same index) Note that 0 corresponds to NO gap, 1->1 gap between tapes.
 
 
 def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing,
-                     undulationWidth=1.0):
+                     xMax=50.0, yMax=75.0, undulationWidth=1.0):
     paths = []
     tapes = zip(tapeAngles, tapeWidths)
     s = tapeSpacing  # spacing
@@ -31,11 +32,11 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing,
             if a == 90:
                 offset = w
                 spacedOffset = (1+s)*offset
-                maxOffset = 50.0+w/2.0
+                maxOffset = xMax+w/2.0
                 numberOffsets = int(maxOffset/spacedOffset)
                 offsetList = [spacedOffset*k for k
-                              in range(-numberOffsets-numShift,
-                                       numberOffsets+3-numShift)]
+                              in range(-numberOffsets-numShift-10,
+                                       numberOffsets-numShift+10)]
                 shift = numShift*offset
                 for os in offsetList:
                     tapeCoords = (
@@ -50,12 +51,12 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing,
             else:
                 offset = w/math.cos(math.radians(a))
                 spacedOffset = ((1+s)*w)/math.cos(math.radians(a))
-                maxOffset = ((75.0+w/2.0)*math.cos(math.radians(a))
-                             + 50.0*math.tan(math.radians(a)))
+                maxOffset = ((yMax+w/2.0)*math.cos(math.radians(a))
+                             + xMax*math.tan(math.radians(a)))
                 numberOffsets = int(maxOffset/spacedOffset)
                 offsetList = [spacedOffset*k for k
-                              in range(-numberOffsets-numShift-5,
-                                       numberOffsets-numShift+5)]
+                              in range(-numberOffsets-numShift-10,
+                                       numberOffsets-numShift+10)]
                 shift = numShift*offset
                 for os in offsetList:
                     tapeCoords = (
@@ -77,21 +78,40 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing,
 
 if __name__ == '__main__':
     from objectPlot import objPlot
+    import matplotlib.pyplot as plt
 
     # define tape width and thickness
-    tapeAng = (0, 90, 45)
-    tapeW = (50,)*len(tapeAng)
-    cpt = 0.2
-    undulationRatio = 0.2
+    tapeAng = (0, 90)
+    tapeW = (25,)*len(tapeAng)
+    tapeS = 2
+    cpt = 0.18
+    undulationRatio = 0.18
     rw = cpt/undulationRatio
 
+    xMin = yMin = -(tapeW[0] / 2.0)
+    xMax = yMax = xMin + (tapeS + 1) * (tapeW[0])
+    numLayers = len(tapeAng) * 2.0  # symmetric
+    laminateThickness = numLayers * cpt
+    zMax = laminateThickness / 2.0
+    zMin = -zMax
+    dimensions = [xMin, yMin, zMin, xMax, yMax, zMax]
+
+    RVEPolygon = Polygon([(xMin, yMin), (xMax, yMin), (xMax, yMax),
+                          (xMin, yMax)])
+
     grid1 = sigc.createGrids(tapeAngles=tapeAng, tapeWidths=tapeW,
-                             undulationWidth=rw)
+                             undulationWidth=rw, sample=RVEPolygon)
 
     tapePaths = laminateCreation(grid1, tapeAngles=tapeAng,
-                                 tapeWidths=tapeW, tapeSpacing=1,
-                                 undulationWidth=rw)
+                                 tapeWidths=tapeW, tapeSpacing=tapeS,
+                                 undulationWidth=rw, xMax=xMax, yMax=yMax)
+    
+    # for (key,poly) in grid1[1].iteritems():
+    #     x,y = poly.exterior.xy
+    #     plt.plot(x,y)
+    # plt.grid(True)
+    # plt.show()
 
-    objPlot(grid1, tapeAng, 'Tape')
-    objPlot(grid1, tapeAng, 'Resin')
-    objPlot(grid1, tapeAng, 'Undulation')
+    objPlot(grid1, tapeAng, 'Tape', sample=RVEPolygon)
+    objPlot(grid1, tapeAng, 'Resin', sample=RVEPolygon)
+    objPlot(grid1, tapeAng, 'Undulation', sample=RVEPolygon)

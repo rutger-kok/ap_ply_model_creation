@@ -2,7 +2,7 @@ from shapely.geometry import Polygon, Point, LineString
 from shapely import affinity
 from shapely.ops import cascaded_union, linemerge, unary_union, polygonize
 from copy import deepcopy
-import math
+from math import cos, radians, tan
 
 '''
 This script is used to define the geometry of interlaced laminates.
@@ -33,6 +33,11 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
         sample = Polygon(
             [(-50.0, -75.0), (50.0, -75.0), (50.0, 75.0), (-50.0, 75.0)])
 
+    xMin = sample.exterior.xy[0][0]
+    xMax = sample.exterior.xy[0][2]
+    yMin = sample.exterior.xy[1][0]
+    yMax = sample.exterior.xy[1][2]
+
     # define mirror point (used to mirror the Polygon boundaries)
     mirrorPoint = Point([(0.0, 0.0), (0.0, 0.0)])
 
@@ -45,7 +50,7 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
         w = tape[1]  # width
         if a == 90:
             offset = w
-            maxOffset = 50.0-w/2.0
+            maxOffset = xMax-w/2.0
             numberOffsets = int(maxOffset/offset)
             offsetList = [offset*k for k
                           in range(0, numberOffsets+1)]
@@ -66,9 +71,9 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
             partitionLines = partitionLines + reflectedLines
 
         else:
-            offset = w/math.cos(math.radians(a))
-            maxOffset = (75.0 - (w/2.0)*math.cos(math.radians(a))
-                         + 50.0*math.tan(math.radians(a)))
+            offset = w/cos(radians(a))
+            maxOffset = (yMax - (w/2.0)*cos(radians(a))
+                         + xMax*tan(radians(a)))
             numberOffsets = int(maxOffset/offset)
             offsetList = [offset*k for k in range(0, numberOffsets+20)]
             for os in offsetList:
@@ -302,69 +307,17 @@ class machinePass():
 if __name__ == '__main__':
     from objectPlot import objPlot
 
-    tapeAng = (0, 90, 45)
-    tapeW = (10,)*len(tapeAng)
+    tapeAng = (0, 90)
+    tapeW = (25.0 ,)*len(tapeAng)
 
     # create grids
     grids = createGrids(tapeAngles=tapeAng, tapeWidths=tapeW,
                         undulationWidth=1.0)
 
     # place tapes
-    for ang in [0, 90, 45]:
+    for ang in [0, 90]:
         passs = machinePass(grids, angle=ang, undulationWidth=1.0)
 
     # objPlot(grids, tapeAng, 'Tape')
     # objPlot(grids, tapeAng, 'Resin')
     objPlot(grids, tapeAng, 'Undulation')
-# -----------------------------------------------------------------------------
-
-        # if self.angle == 90:
-        #     xxx, yyy = rotatedBounds.exterior.xy
-        #     xx0 = map(lambda m: round(m, 6), xxx)
-        #     yy0 = map(lambda n: round(n, 6), yyy)
-        #     uCoords = zip(xx0, yy0)
-        #     # left side
-        #     uTopRotated = Polygon([(uCoords[1][0]-2*uw, uCoords[1][1]),
-        #                            (uCoords[1][0]-uw, uCoords[1][1]),
-        #                            (uCoords[0][0]-uw, uCoords[0][1]),
-        #                            (uCoords[0][0]-2*uw, uCoords[0][1])])
-        #     # right side
-        #     uBottomRotated = Polygon([(uCoords[2][0]+uw, uCoords[2][1]),
-        #                               (uCoords[2][0]+2*uw, uCoords[2][1]),
-        #                               (uCoords[3][0]+2*uw, uCoords[3][1]),
-        #                               (uCoords[3][0]+uw, uCoords[3][1])])
-        # else:
-        #     uTop = Polygon([(self.coords[0][0], self.coords[0][1]+2*uw),
-        #                     (self.coords[1][0], self.coords[1][1]+2*uw),
-        #                     (self.coords[1][0], self.coords[1][1]+uw),
-        #                     (self.coords[0][0], self.coords[0][1]+uw)])
-        #     uBottom = Polygon([(self.coords[2][0], self.coords[2][1]-uw),
-        #                        (self.coords[3][0], self.coords[3][1]-uw),
-        #                        (self.coords[3][0], self.coords[3][1]-2*uw),
-        #                        (self.coords[2][0], self.coords[2][1]-2*uw)])
-        #     uTopRotated = affinity.rotate(
-        #         uTop, self.angle, self.tapeCentroid)
-        #     uBottomRotated = affinity.rotate(
-        #         uBottom, self.angle, self.tapeCentroid)
-        # uBounds = cascaded_union(
-        #     [uTopRotated, uBottomRotated]).buffer(
-        #         1*10**-8, join_style=2)
-        # self.uRegions = [(obj9ID, obj9) for (obj9ID, obj9)
-        #                  in grids[1].iteritems()
-        #                  if obj9.within(uBounds)]
-
-        # # lift up overlapping resin regions
-        # for j in range(len(self.uRegions)):
-        #     obj10ID, obj10 = self.uRegions[j]
-        #     if obj10.objectType is None:
-        #         pass
-        #     elif obj10.objectType == 'Tape' or 'Resin' or 'Undulation':
-        #         k = 2
-        #         while k <= len(grids):
-        #             objGrid3 = grids[k]  # next grid layer
-        #             if objGrid3[obj10ID].objectType is None:
-        #                 break
-        #             elif objGrid3[obj10ID].objectType is 'Undulation':
-        #                 self.setAngle(objGrid3[obj10ID], self.angle)
-        #             else:
-        #                 k += 1

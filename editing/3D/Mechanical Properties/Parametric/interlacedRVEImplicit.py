@@ -1,5 +1,5 @@
 from sys import path
-githubPath = 'C:\\Users\\rutge\\Documents\\GitHub'
+githubPath = r"\\arran.sms.ed.ac.uk\home\s1342398\GitHub"
 path.append('C:\\Python27\\Lib\\site-packages')
 path.append(githubPath + '\\interlaced_model_creation\\editing')
 path.append(githubPath + '\\interlaced_model_creation\\editing\\3D\\Mechanical Properties\\Parametric')
@@ -38,7 +38,9 @@ def createPartGrids(tapeAngles, tapeWidths, tapeSpacing, tapeThickness,
     tapePaths = tp.laminateCreation(grid=partGrid, tapeAngles=tapeAngles,
                                     tapeWidths=tapeWidths,
                                     tapeSpacing=tapeSpacing,
+                                    xMax=xMax, yMax=yMax,
                                     undulationWidth=undulationWidth)
+
     return partGrid, tapePaths, dimensions
 
 
@@ -245,20 +247,16 @@ def assignPBCs(modelName, dimensions, displacements):
                                    fieldName='')
 
 
-def createJob(modelName, run=False, precision=DOUBLE, cpus=2):
-    if precision == DOUBLE:
-        p1 = DOUBLE_PLUS_PACK
-        p2 = FULL
-    else:
-        p1 = p2 = SINGLE
+def createJob(modelName, run=False, cpus=6):
 
-    mdb.Job(atTime=None, contactPrint=OFF, description='', echoPrint=OFF,
-            explicitPrecision=p1, getMemoryFromAnalysis=True,
-            historyPrint=OFF, memory=90, memoryUnits=PERCENTAGE,
-            model=modelName, modelPrint=OFF, multiprocessingMode=DEFAULT,
-            name=modelName, nodalOutputPrecision=p2, numCpus=cpus, queue=None,
-            scratch='', type=ANALYSIS, userSubroutine='', waitHours=0,
-            waitMinutes=0)
+    mdb.Job(name=modelName, model=modelName, description='', type=ANALYSIS, 
+            atTime=None, waitMinutes=0, waitHours=0, queue=None, memory=90,
+            memoryUnits=PERCENTAGE, getMemoryFromAnalysis=True, 
+            explicitPrecision=SINGLE, nodalOutputPrecision=FULL,
+            echoPrint=OFF, modelPrint=OFF, contactPrint=OFF, historyPrint=OFF,
+            userSubroutine='', scratch='', resultsFormat=ODB,
+            multiprocessingMode=DEFAULT, numCpus=cpus, numDomains=cpus,
+            numGPUs=0)
     if run is True:
         mdb.jobs[modelName].submit(consistencyChecking=OFF)
         mdb.jobs[modelName].waitForCompletion()
@@ -297,7 +295,7 @@ def main(tapeAngles, tapeWidths, tapeSpacing, tapeThickness, undulationRatio,
     # Name model and change working directory
     ratioString = str(undulationRatio).replace('.', '_')
     angleString = '-'.join([str(x) for x in tapeAngles])
-    modelName = '{}--{}-{}-{}'.format(angleString, int(tapeWidths),
+    modelName = '{}--{}-{}-{}'.format(angleString, int(tapeWidths[0]),
                                       int(tapeSpacing), ratioString)
     mdb.Model(name=modelName, modelType=STANDARD_EXPLICIT)
 
@@ -315,17 +313,17 @@ def main(tapeAngles, tapeWidths, tapeSpacing, tapeThickness, undulationRatio,
                                                       tapeThickness,
                                                       undulationWidth)
     createSpecimenPart(modelName, partName, dimensions)
-    mirrorPart(modelName, partName)
     partitionPart(modelName, partName, dimensions, tapeAngles, tapeWidths,
                   tapeThickness, undulationWidth)
+    mirrorPart(modelName, partName)
     matprops.VTC401_Elastic(modelName, tapeAngles, tapeThickness,
                             undulationWidth)
     assignProps(modelName, partName, partGrid, tapeThickness)
-    createMesh(modelName, partName, 1.0)
+    createMesh(modelName, partName, 0.5)
     createStaticStep(modelName)
     createInstance(modelName, partName)
     assignPBCs(modelName, dimensions, displacements)
-    createJob(modelName, run=True)
+    createJob(modelName, run=False)
     stiffness = postProcess(modelName, dimensions)
 
     return stiffness
@@ -338,7 +336,7 @@ if __name__ == '__main__':
     tapeWidth = 25.0
     tapeWidths = (tapeWidth, ) * len(tapeAngles)  # tape widths
     # number of gaps between tapes in interlacing pattern
-    tapeSpacing = 1
+    tapeSpacing = 2
     # cured ply thickness e.g. 0.18125
     tapeThickness = 0.18
     # ratio of undulation amplitude to length e.g. 0.090625

@@ -1,6 +1,7 @@
 from sys import path
+githubPath = r"C:\Users\rutge\Documents\GitHub"
 path.append(r'C:\Python27\Lib\site-packages')
-path.append(r"C:\Users\rutge\Documents\GitHub\interlaced_model_creation\editing\3D\Mechanical Properties")
+path.append(githubPath + '\\interlaced_model_creation\\editing')
 from abaqus import *
 from abaqusConstants import *
 import regionToolset
@@ -266,6 +267,12 @@ for (pathNumber, tapePath) in enumerate(tapePaths):
         passPart.generateMesh()
         startElemNum += len(passPart.elements)
         startNodeNum += len(passPart.nodes)
+
+allInstanceKeys = laminateAssembly.instances.keys()
+laminateAssembly.LinearInstancePattern(instanceList=allInstanceKeys, 
+                                       direction1=(0.0, 0.0, 1.0),
+                                       direction2=(0.0, 1.0, 0.0), number1=2, 
+                                       number2=1, spacing1=0.36, spacing2=150.0)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Create cohesive zone interactions between faces of the assembly

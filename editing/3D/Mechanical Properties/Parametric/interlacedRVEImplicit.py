@@ -15,6 +15,7 @@ from math import tan, cos, radians
 from periodicBC_3D import periodicBC
 import os
 import interlacedMaterialProps as matprops
+from caeModules import *
 
 def createPartGrids(tapeAngles, tapeWidths, tapeSpacing, tapeThickness,
                     undulationWidth=1.0):
@@ -323,7 +324,7 @@ def main(tapeAngles, tapeWidths, tapeSpacing, tapeThickness, undulationRatio,
     createStaticStep(modelName)
     createInstance(modelName, partName)
     assignPBCs(modelName, dimensions, displacements)
-    createJob(modelName, run=False)
+    createJob(modelName, run=True)
     stiffness = postProcess(modelName, dimensions)
 
     return stiffness

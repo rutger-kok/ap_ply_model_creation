@@ -11,9 +11,11 @@ import csv
 
 def parametricStudy():
     # define parameters and create design space
-    widths = (15.0, 20.0, 25.0)
-    spacing = (1, 2, 3, 4)
-    designSpace = product(widths, spacing)
+    widths = (20.0, 25.0)
+    spacing = (1, 2, 3, 4, 5)
+    # designSpace = product(widths, spacing)
+    designSpace = ((20, 5), (25, 1), (25, 2), (25, 3),
+                   (25, 4), (25, 5))
 
     # define non parameter variables
     tapeAngles = (0, 90)
@@ -31,17 +33,17 @@ def parametricStudy():
                                quotechar='|', quoting=csv.QUOTE_MINIMAL)
         csvWriter.writerow(headings)                       
         for study in designSpace:
-            try:
-                tapeWidths = (study[0], )* len(tapeAngles)
-                tapeSpacing = study[1]
-                studyStiffness = intRVE.main(tapeAngles, tapeWidths,
-                                             tapeSpacing, tapeThickness,
-                                             undulationRatio, displacements)
-                stiffnessData[study] = studyStiffness
-                csvWriter.writerow([tapeWidths[0], tapeSpacing, studyStiffness])
-            except:
-                csvWriter.writerow([tapeWidths[0], 'NaN', 'NaN'])
-                continue
+            # try:
+            tapeWidths = (study[0], )* len(tapeAngles)
+            tapeSpacing = study[1]
+            studyStiffness = intRVE.main(tapeAngles, tapeWidths,
+                                            tapeSpacing, tapeThickness,
+                                            undulationRatio, displacements)
+            stiffnessData[study] = studyStiffness
+            csvWriter.writerow([tapeWidths[0], tapeSpacing, studyStiffness])
+            # except:
+            #     csvWriter.writerow([tapeWidths[0], 'NaN', 'NaN'])
+            #     continue
 
 
 if __name__ == '__main__':

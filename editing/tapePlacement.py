@@ -40,10 +40,10 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing,
                 shift = numShift*offset
                 for os in offsetList:
                     tapeCoords = (
-                                  [(-100.0+os+shift, (w/2.0)-r),
-                                   (100.0+os+shift, (w/2.0)-r),
-                                   (100.0+os+shift, (-w/2.0)+r),
-                                   (-100.0+os+shift, (-w/2.0)+r)])
+                                  [(-300.0+os+shift, (w/2.0)-r),
+                                   (300.0+os+shift, (w/2.0)-r),
+                                   (300.0+os+shift, (-w/2.0)+r),
+                                   (-300.0+os+shift, (-w/2.0)+r)])
                     createdTape = sigc.machinePass(
                             grid, coords=tapeCoords, angle=90,
                             undulationWidth=r).connectivity
@@ -60,10 +60,10 @@ def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing,
                 shift = numShift*offset
                 for os in offsetList:
                     tapeCoords = (
-                            [(-150.0, ((w/2.0)-r)+os+shift),
-                             (150.0, ((w/2.0)-r)+os+shift),
-                             (150.0, ((-w/2.0)+r)+os+shift),
-                             (-150.0, ((-w/2.0)+r)+os+shift)])
+                            [(-300.0, ((w/2.0)-r)+os+shift),
+                             (300.0, ((w/2.0)-r)+os+shift),
+                             (300.0, ((-w/2.0)+r)+os+shift),
+                             (-300.0, ((-w/2.0)+r)+os+shift)])
                     createdTape = sigc.machinePass(
                             grid, coords=tapeCoords, angle=a,
                             undulationWidth=r).connectivity
@@ -82,8 +82,8 @@ if __name__ == '__main__':
 
     # define tape width and thickness
     tapeAng = (0, 90)
-    tapeW = (25,)*len(tapeAng)
-    tapeS = 2
+    tapeW = (20,)*len(tapeAng)
+    tapeS = 5
     cpt = 0.18
     undulationRatio = 0.18
     rw = cpt/undulationRatio

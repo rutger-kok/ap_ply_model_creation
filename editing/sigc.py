@@ -55,12 +55,12 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
             offsetList = [offset*k for k
                           in range(0, numberOffsets+1)]
             for os in offsetList:
-                tapeLineCoords = [((w/2.0)-uw+os, 100.0),
-                                  ((w/2.0)-uw+os, -100.0)]
-                resinLineCoords1 = ([((w/2.0)+os, 100.0),
-                                     ((w/2.0)+os, -100.0)])
-                resinLineCoords2 = ([((w/2.0)+os+uw, 100.0),
-                                     ((w/2.0)+os+uw, -100.0)])
+                tapeLineCoords = [((w/2.0)-uw+os, 300.0),
+                                  ((w/2.0)-uw+os, -300.0)]
+                resinLineCoords1 = ([((w/2.0)+os, 300.0),
+                                     ((w/2.0)+os, -300.0)])
+                resinLineCoords2 = ([((w/2.0)+os+uw, 300.0),
+                                     ((w/2.0)+os+uw, -300.0)])
                 tapeLine = LineString(tapeLineCoords)
                 resinLine1 = LineString(resinLineCoords1)
                 resinLine2 = LineString(resinLineCoords2)
@@ -77,12 +77,12 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
             numberOffsets = int(maxOffset/offset)
             offsetList = [offset*k for k in range(0, numberOffsets+20)]
             for os in offsetList:
-                tapeLineCoords = [(-100.0, (w/2.0)-uw+os),
-                                  (100.0, (w/2.0)-uw+os)]
+                tapeLineCoords = [(-300.0, (w/2.0)-uw+os),
+                                  (300.0, (w/2.0)-uw+os)]
                 resinLineCoords1 = (
-                        [(-100.0, (w/2.0)+os), (100.0, (w/2.0)+os)])
+                        [(-300.0, (w/2.0)+os), (300.0, (w/2.0)+os)])
                 resinLineCoords2 = (
-                        [(-100.0, (w/2.0)+os+uw), (100.0, (w/2.0)+os+uw)])
+                        [(-300.0, (w/2.0)+os+uw), (300.0, (w/2.0)+os+uw)])
                 rotPoint = Point([(0.0, os), (0.0, os)])
                 tapeLine = affinity.rotate(
                     LineString(tapeLineCoords), a, rotPoint)
@@ -129,8 +129,8 @@ class machinePass():
         if coords is None:
             w = 10.0
             self.coords = (
-                    [(-100.0, (w/2)-uw), (100.0, (w/2)-uw),
-                     (100.0, (-w/2)+uw), (-100.0, (-w/2)+uw)])
+                    [(-300.0, (w/2)-uw), (300.0, (w/2)-uw),
+                     (300.0, (-w/2)+uw), (-300.0, (-w/2)+uw)])
         else:
             self.coords = coords
 

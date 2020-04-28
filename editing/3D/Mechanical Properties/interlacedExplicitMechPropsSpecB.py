@@ -17,29 +17,21 @@ session.viewports['Viewport: 1'].setValues(displayedObject=None)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model parameters
-userInput = getInputs(fields=(('Specimen Type: ', 'A'),
-                              ('Laminate Angles (deg):', '(0, 90)'),
-                              ('Tape Width (mm):', '25'),
-                              ('Tape Spacing (int):', '1'),
-                              ('Cured Ply Thickness (mm):', '0.18'),
-                              ('Undulation Ratio (float):', '0.09')),
-                      label='Please provide the following information',
-                      dialogTitle='Model Parameters')
 
-specimenType = userInput[0]
-laminateAngles = ast.literal_eval(userInput[1])  # define angles of tapes
-tapeWidth = float(userInput[2])
+specimenType = 'B'
+laminateAngles = (0, 90)  # define angles of tapes
+tapeWidth = 15.0
 tw = (tapeWidth, ) * len(laminateAngles)  # tape widths
 # number of gaps between tapes in interlacing pattern
-tapeSpace = int(userInput[3])
+tapeSpace = 1
 # cured ply thickness e.g. 0.18125
-cpt = float(userInput[4])
+cpt = 0.18
 # ratio of undulation amplitude to length e.g. 0.090625
-undulationRatio = float(userInput[5])
+undulationRatio = 0.18
 uw = cpt / undulationRatio
 
 # define specimen dimensions
-if specimenType == 'A' or 'C':
+if specimenType == 'B' or 'C':
     xMin = -45.0 / 2.0
     xMax = -xMin
 else:
@@ -68,7 +60,7 @@ tapePaths = tp.laminateCreation(
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model name
 
-ratioString = userInput[5].replace('.', '_')
+ratioString = str(undulationRatio).replace('.', '_')
 modelName = '{}-{}'.format(specimenType, ratioString)
 mdb.Model(name=modelName, modelType=STANDARD_EXPLICIT)
 laminateModel = mdb.models[modelName]

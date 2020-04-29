@@ -12,6 +12,7 @@ import tapePlacement as tp
 import analyticStiffness
 import math
 import os
+import mesh
 
 session.viewports['Viewport: 1'].setValues(displayedObject=None)
 
@@ -139,15 +140,15 @@ for combo in interfaceAngleCombos:
 
 # create step
 laminateModel.ExplicitDynamicsStep(name='Loading Step', previous='Initial',
-                                   timePeriod=10.0,
+                                   timePeriod=30.0,
                                    massScaling=((SEMI_AUTOMATIC, MODEL,
                                                  THROUGHOUT_STEP, 0.0, 1e-06,
                                                  BELOW_MIN, 1, 0, 0.0, 0.0, 0,
                                                  None), ))
 # Modify field output request
 fieldOutput = laminateModel.fieldOutputRequests['F-Output-1']
-fieldOutput.setValues(variables=('S', 'LE', 'U', 'V', 'A', 'RF', 'CSTRESS',
-                                 'CSDMG', 'SDV', 'STATUS'), numIntervals=50)
+fieldOutput.setValues(variables=('S', 'LE', 'U', 'V', 'A', 'RF', 'SDV',
+                                 'STATUS'), numIntervals=50)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Generate parts
@@ -263,6 +264,15 @@ partitionSpecimen(tapeAngles=laminateAngles, tapeWidths=tw, undulationWidth=uw)
 
 specimenPart.seedPart(size=meshSize)
 specimenPart.generateMesh()
+elemType1 = mesh.ElemType(elemCode=C3D8R, elemLibrary=EXPLICIT, 
+                          kinematicSplit=AVERAGE_STRAIN,
+                          secondOrderAccuracy=OFF, hourglassControl=ENHANCED,
+                          distortionControl=DEFAULT)
+elemType2 = mesh.ElemType(elemCode=C3D6, elemLibrary=EXPLICIT)
+elemType3 = mesh.ElemType(elemCode=C3D4, elemLibrary=EXPLICIT)
+allCellsSet = specimenPart.Set(cells=specimenPart.cells, name='All Cells')
+specimenPart.setElementType(regions=allCellsSet,
+                            elemTypes=(elemType1, elemType2, elemType3))
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Assign properties
@@ -333,8 +343,8 @@ rfPoint2Region = laminateAssembly.Set(referencePoints=(rfPoint2,),
 
 laminateModel.Coupling(name='Top Coupling', controlPoint=rfPoint1Region,
                        surface=tFacesSurface, influenceRadius=WHOLE_SURFACE,
-                       couplingType=KINEMATIC, localCsys=None, u1=ON, u2=ON,
-                       u3=ON, ur1=ON, ur2=ON, ur3=ON)
+                       couplingType=KINEMATIC, localCsys=None, u1=OFF, u2=ON,
+                       u3=OFF, ur1=ON, ur2=ON, ur3=ON)
 
 laminateModel.Coupling(name='Bottom Coupling', controlPoint=rfPoint2Region,
                        surface=bFacesSurface, influenceRadius=WHOLE_SURFACE,
@@ -352,7 +362,7 @@ laminateModel.DisplacementBC(name='Bottom Surface BC',
                              localCsys=None)
 laminateModel.VelocityBC(name='Top Surface BC', createStepName='Loading Step',
                          region=rfPoint1Region, v1=UNSET, v2=0.05, v3=UNSET,
-                         vr1=UNSET, vr2=UNSET, vr3=UNSET,
+                         vr1=0.0, vr2=0.0, vr3=0.0,
                          amplitude='Smoothing Amplitude', localCsys=None,
                          distributionType=UNIFORM, fieldName='')
 laminateModel.ZsymmBC(name='ZSymmetry', createStepName='Loading Step',

@@ -31,19 +31,20 @@ cpt = 0.18
 undulationRatio = 0.18
 uw = cpt / undulationRatio
 
-xMin = 0.0
-xMax = 25.0
+# define RVE dimensions
+xMin = -(tw[0] / 2.0)
+xMax = xMin + (tapeSpace + 1) * (tw[0])
 yMin = -75.0
-yMax = 75.0
-specimenHeight = yMax - yMin
+yMax = -yMin
 specimenWidth = xMax - xMin
+xMid = yMid = xMin + (specimenWidth / 2.0)
 numLayers = len(laminateAngles) * 2.0  # symmetric
 laminateThickness = numLayers * cpt
 zMax = laminateThickness / 2.0
 zMin = -zMax
 RVEPolygon = Polygon([(xMin, yMin), (xMax, yMin), (xMax, yMax), (xMin, yMax)])
 dimensions = [xMin, yMin, zMin, xMax, yMax, zMax]
-meshSize = 1.0
+meshSize = 0.25
 
 # create grid using shapely
 partGrid = sigc.createGrids(tapeAngles=laminateAngles, tapeWidths=tw,
@@ -77,10 +78,10 @@ nu23 = 0.298
 G12 = G13 = 6.47
 G23 = 4.38
 Xt = 2.61
-Xc = 1.759
+Xc = 1.76
 Yt = 0.055
-Yc = 0.285
-Sl = 0.105
+Yc = 0.200
+Sl = 0.150
 alpha0 = 53.0
 G1Plus = 0.1
 G1Minus = 0.1
@@ -88,7 +89,6 @@ G2Plus = 0.00075
 G2Minus = 0.0025
 G6 = 0.0035
 density = 1.59e-06
-
 
 # Create Abaqus materials
 

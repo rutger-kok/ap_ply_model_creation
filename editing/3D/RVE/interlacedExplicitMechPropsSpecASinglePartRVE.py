@@ -1,6 +1,6 @@
 from sys import path
 path.append(r'C:\Python27\Lib\site-packages')
-path.append(r"\\arran.sms.ed.ac.uk\home\s1342398\GitHub\interlaced_model_creation\editing\3D_RVE")
+path.append(r"\\arran.sms.ed.ac.uk\home\s1342398\GitHub\interlaced_model_creation\editing")
 from shapely.geometry import Point, Polygon, LineString
 from shapely import affinity
 from abaqus import *
@@ -13,29 +13,35 @@ import analyticStiffness
 import math
 import os
 import mesh
+import ast
 
 session.viewports['Viewport: 1'].setValues(displayedObject=None)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model parameters
+userInput = getInputs(fields=(('Laminate Angles (deg):', '(0, 90)'),
+                              ('Tape Width (mm):', '25'),
+                              ('Tape Spacing (int):', '1'),
+                              ('Cured Ply Thickness (mm):', '0.18'),
+                              ('Undulation Ratio (float):', '0.09')),
+                      label='Please provide the following information',
+                      dialogTitle='Model Parameters')
 
-specimenType = 'C'
-laminateAngles = (0, 90)  # define angles of tapes
-tapeWidth = 15.0
+laminateAngles = ast.literal_eval(userInput[0])  # define angles of tapes
+tapeWidth = float(userInput[1])
 tw = (tapeWidth, ) * len(laminateAngles)  # tape widths
 # number of gaps between tapes in interlacing pattern
-tapeSpace = 2
+tapeSpace = int(userInput[2])
 # cured ply thickness e.g. 0.18125
-cpt = 0.18
+cpt = float(userInput[3])
 # ratio of undulation amplitude to length e.g. 0.090625
-undulationRatio = 0.18
+undulationRatio = float(userInput[4])
 uw = cpt / undulationRatio
 
 # define RVE dimensions
-xMin = -(tw[0] / 2.0)
-xMax = xMin + (tapeSpace + 1) * (tw[0])
-yMin = -75.0
-yMax = -yMin
+xMin = yMin = -(tw[0] / 2.0)
+xMax = yMax = xMin + (tapeSpace + 1) * (tw[0])
+specimenHeight = yMax - yMin
 specimenWidth = xMax - xMin
 xMid = yMid = xMin + (specimenWidth / 2.0)
 numLayers = len(laminateAngles) * 2.0  # symmetric
@@ -44,7 +50,7 @@ zMax = laminateThickness / 2.0
 zMin = -zMax
 RVEPolygon = Polygon([(xMin, yMin), (xMax, yMin), (xMax, yMax), (xMin, yMax)])
 dimensions = [xMin, yMin, zMin, xMax, yMax, zMax]
-meshSize = 0.25
+meshSize = 1.0
 
 # create grid using shapely
 partGrid = sigc.createGrids(tapeAngles=laminateAngles, tapeWidths=tw,
@@ -57,14 +63,16 @@ tapePaths = tp.laminateCreation(
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model name
 
-ratioString = str(undulationRatio).replace('.', '_')
-modelName = '{}-{}'.format(specimenType, ratioString)
+ratioString = userInput[4].replace('.', '_')
+angleString = '-'.join([str(x) for x in laminateAngles])
+modelName = '{}--{}-{}-{}'.format(angleString, int(tw[0]), int(tapeSpace),
+                                  ratioString)
 mdb.Model(name=modelName, modelType=STANDARD_EXPLICIT)
 laminateModel = mdb.models[modelName]
 laminateAssembly = laminateModel.rootAssembly
 
 # set the work directory
-wd = '{}'.format(modelName)
+wd = 'C:\\Workspace\\3D_RVE\\{}'.format(modelName)
 if not os.path.exists(wd):
     os.makedirs(wd)
 os.chdir(wd)
@@ -78,10 +86,10 @@ nu23 = 0.298
 G12 = G13 = 6.47
 G23 = 4.38
 Xt = 2.61
-Xc = 1.76
+Xc = 1.759
 Yt = 0.055
-Yc = 0.200
-Sl = 0.150
+Yc = 0.285
+Sl = 0.105
 alpha0 = 53.0
 G1Plus = 0.1
 G1Minus = 0.1
@@ -89,6 +97,7 @@ G2Plus = 0.00075
 G2Minus = 0.0025
 G6 = 0.0035
 density = 1.59e-06
+
 
 # Create Abaqus materials
 

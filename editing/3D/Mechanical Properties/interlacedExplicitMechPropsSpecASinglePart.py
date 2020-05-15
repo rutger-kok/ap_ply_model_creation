@@ -1,6 +1,7 @@
 from sys import path
+githubPath = r"\\arran.sms.ed.ac.uk\home\s1342398\GitHub"
 path.append(r'C:\Python27\Lib\site-packages')
-path.append(r"\\arran.sms.ed.ac.uk\home\s1342398\GitHub\interlaced_model_creation\editing\3D_RVE")
+path.append(githubPath + '\\interlaced_model_creation\\editing')
 from shapely.geometry import Point, Polygon, LineString
 from shapely import affinity
 from abaqus import *
@@ -13,8 +14,6 @@ import analyticStiffness
 import math
 import os
 import mesh
-
-session.viewports['Viewport: 1'].setValues(displayedObject=None)
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Define model parameters
@@ -34,8 +33,8 @@ uw = cpt / undulationRatio
 # define RVE dimensions
 xMin = -(tw[0] / 2.0)
 xMax = xMin + (tapeSpace + 1) * (tw[0])
-yMin = -75.0
-yMax = -yMin
+yMin = xMin
+yMax = xMax
 specimenWidth = xMax - xMin
 xMid = yMid = xMin + (specimenWidth / 2.0)
 numLayers = len(laminateAngles) * 2.0  # symmetric
@@ -44,11 +43,11 @@ zMax = laminateThickness / 2.0
 zMin = -zMax
 RVEPolygon = Polygon([(xMin, yMin), (xMax, yMin), (xMax, yMax), (xMin, yMax)])
 dimensions = [xMin, yMin, zMin, xMax, yMax, zMax]
-meshSize = 0.25
+meshSize = 0.5
 
 # create grid using shapely
 partGrid = sigc.createGrids(tapeAngles=laminateAngles, tapeWidths=tw,
-                            undulationWidth=uw, sample=RVEPolygon)
+                            undulationWidth=uw)
 # identify parts in grid
 tapePaths = tp.laminateCreation(
     grid=partGrid, tapeAngles=laminateAngles, tapeWidths=tw,
@@ -78,10 +77,10 @@ nu23 = 0.298
 G12 = G13 = 6.47
 G23 = 4.38
 Xt = 2.61
-Xc = 1.76
+Xc = 1.759
 Yt = 0.055
-Yc = 0.200
-Sl = 0.150
+Yc = 0.285
+Sl = 0.105
 alpha0 = 53.0
 G1Plus = 0.1
 G1Minus = 0.1
@@ -133,7 +132,6 @@ for combo in interfaceAngleCombos:
     undMaterial.Density(table=((density, ), ))
     undulationSection = laminateModel.HomogeneousSolidSection(
         name=matName + ' Section', material=matName)
-
 
 # IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 # Create step
@@ -279,30 +277,32 @@ specimenPart.setElementType(regions=allCellsSet,
 
 for layer, polyDict in partGrid.iteritems():
     for objID, obj in polyDict.iteritems():
-        objCentroid = obj.centroid.coords
-        zCoord = (2 * layer - 1) / 2.0 * cpt
-        selectedCells = specimenCells.findAt(((objCentroid[0][0],
-                                               objCentroid[0][1], zCoord), ),
-                                             ((objCentroid[0][0],
-                                               objCentroid[0][1], -zCoord), ))
-        objRegion = regionToolset.Region(cells=selectedCells)
-        objType = obj.objectType
-        objAngle = obj.angle[-1]
-        if objType == 'Undulation':
-            interfaceAngle = abs(obj.angle[0] - obj.angle[1])
-            secAngle = (0, interfaceAngle)
-            secName = 'Undulation {} Section'.format(secAngle)
-        else:
-            secName = '{} Section'.format(objType)
-        specimenPart.SectionAssignment(
-            region=objRegion, sectionName=secName,
-            offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
-            thicknessAssignment=FROM_SECTION)
-        specimenPart.MaterialOrientation(
-            region=objRegion, orientationType=SYSTEM, axis=AXIS_3,
-            localCsys=None, fieldName='',
-            additionalRotationType=ROTATION_ANGLE, additionalRotationField='',
-            angle=objAngle, stackDirection=STACK_3)
+        if obj.representative_point().within(RVEPolygon):
+            objCentroid = obj.centroid.coords
+            zCoord = (2 * layer - 1) / 2.0 * cpt
+            selectedCells = specimenCells.findAt(((objCentroid[0][0],
+                                                objCentroid[0][1], zCoord), ),
+                                                ((objCentroid[0][0],
+                                                objCentroid[0][1], -zCoord), ))
+            objRegion = regionToolset.Region(cells=selectedCells)
+            objType = obj.objectType
+            objAngle = obj.angle[-1]
+            if objType == 'Undulation':
+                interfaceAngle = abs(obj.angle[0] - obj.angle[1])
+                secAngle = (0, interfaceAngle)
+                secName = 'Undulation {} Section'.format(secAngle)
+            else:
+                secName = '{} Section'.format(objType)
+            specimenPart.SectionAssignment(
+                region=objRegion, sectionName=secName,
+                offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
+                thicknessAssignment=FROM_SECTION)
+            specimenPart.MaterialOrientation(
+                region=objRegion, orientationType=SYSTEM, axis=AXIS_3,
+                localCsys=None, fieldName='',
+                additionalRotationType=ROTATION_ANGLE,
+                additionalRotationField='', angle=objAngle,
+                stackDirection=STACK_3)
 
 # create the part instance
 specimenInstance = laminateAssembly.Instance(name='Specimen',

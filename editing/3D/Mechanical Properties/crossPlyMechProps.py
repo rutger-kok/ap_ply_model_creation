@@ -92,7 +92,7 @@ class TensileModel():
             thicknessAssignment=FROM_SECTION)
         part.MaterialOrientation(
             region=cellRegion, orientationType=SYSTEM, stackDirection=STACK_3,
-            angle=angle, additionalRotationType=ROTATION_ANGLE,
+            angle=abs(angle - 90.0), additionalRotationType=ROTATION_ANGLE,
             axis=AXIS_3, fieldName='', additionalRotationField='',
             localCsys=None)
 
@@ -102,7 +102,7 @@ class TensileModel():
 
         # create the part instance
         instanceName = 'Ply Instance - {}'.format(number)
-        zOffset = (number - 1) * self.t_thickness
+        zOffset = number * self.t_thickness
         self.assembly.Instance(name=instanceName, part=part, dependent=ON)
         self.assembly.translate(instanceList=(instanceName, ),
                                 vector=(0.0, 0.0, zOffset))

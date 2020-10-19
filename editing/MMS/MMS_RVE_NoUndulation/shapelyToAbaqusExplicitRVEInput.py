@@ -1,6 +1,6 @@
 from sys import path
 path.append(r'C:\Python27\Lib\site-packages')
-path.append(r"C:\Users\rutge\Documents\GitHub\interlaced_model_creation\editing\MMS_RVE_NoUndulation")
+path.append(r"C:\GitHub\interlaced_model_creation\editing")
 from shapely.geometry import Point, Polygon, LineString
 from shapely import affinity
 from abaqus import *
@@ -9,7 +9,7 @@ from visualization import *
 import regionToolset
 import sigc as sigc
 import tapePlacement as tp
-import analyticStiffness
+import analyticStiffness2 as analyticStiffness
 import math
 from periodicBC_2D import periodicBC
 import mesh

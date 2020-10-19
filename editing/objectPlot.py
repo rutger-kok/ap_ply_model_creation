@@ -32,7 +32,7 @@ def objPlot(grid, angles, typ, sample=None):
                 for angleSet in angleSets:
                     sameangle = [tape for tape
                                  in tapesInLayer
-                                 if tape.angle == angleSet]
+                                 if list(tape.angle) == angleSet]
                     merged.append((cascaded_union(sameangle), angleSet))
                 for angleSet2, angle in merged:
                     if angleSet2.geom_type == 'Polygon':

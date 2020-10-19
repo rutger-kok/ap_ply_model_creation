@@ -3,6 +3,7 @@ from shapely.affinity import scale, rotate
 from shapely.ops import cascaded_union, linemerge, unary_union, polygonize
 from copy import deepcopy
 from math import cos, radians, tan
+from itertools import combinations
 
 '''
 This script is used to define the geometry of interlaced laminates.
@@ -12,7 +13,7 @@ by the shapelyToAbaqus script.
 Geometries are created using the Python Shapely library. The script first
 creates multiple polygon grids, each representing a layer in a laminate.
 
-The machinePass class can be used to place tapes to form a laminate.
+The afpPass class can be used to place tapes to form a laminate.
 '''
 
 # ----------------------------------------------------------------------------
@@ -108,103 +109,43 @@ setattr(Polygon, 'layer', 1)  # create attribute in Polygon class
 setattr(Polygon, 'objectID', None)
 
 
-# Class defining a single pass of a an ATP machine
-# inputs: grid of the specimen, angle of the pass, coords, width of resin
-# NOTE: a pass should be specified using its coordinates when horizontal
-# and then rotated. Do not rotate outside of the machinePass class
-class machinePass():
+class afpPass():
+    '''
+    Class defining a single pass of a an AFP machine
+    inputs: grid of the specimen, angle of the pass, coords, width of resin
+    NOTE: a pass should be specified using its coordinates when horizontal
+    and then rotated. Do not rotate outside of the afpPass class
+    '''
+
     def __init__(self, grids, angle=0, coords=None, undulationWidth=1.0):
-
         self.angle = angle  # assign to instance variable
-        uw = undulationWidth  # assigned to uw for brevity, default value = 1
-
-        # default tape dimensions (used unless other coords are supplied)
+        self.uw = undulationWidth  # assigned to uw for brevity, default value = 1
+        # set tape dimensions or use default
         if coords is None:
-            w = 10.0
-            self.coords = ([(-300.0, (w / 2) - uw), (300.0, (w / 2) - uw),
-                            (300.0, (-w / 2) + uw), (-300.0, (-w / 2) + uw)])
+            w = 30.0
+            self.coords = ([(-300.0, (w / 2) - self.uw), (300.0, (w / 2) - self.uw),
+                            (300.0, (-w / 2) + self.uw), (-300.0, (-w / 2) + self.uw)])
         else:
             self.coords = coords
-
         # define tape boundaries
-        bounds = Polygon(self.coords)
-        rotatedBounds = rotate(bounds,
+        self.bounds = Polygon(self.coords)
+        self.rotatedBounds = rotate(self.bounds,
                                self.angle).buffer(1 * 10**-8, join_style=2)
-
         # identify which Polygons from the createGrids function are within
         # the boundaries of the rotated tape
         self.tapePath = [(obj1ID, obj1) for (obj1ID, obj1)
                          in grids[1].iteritems()
-                         if obj1.within(rotatedBounds)]
+                         if obj1.within(self.rotatedBounds)]
 
-        # The following loop iterates over each Polygon identified as being
-        # within the bounds of the current machine pass.
-        # Each Polygon has an attribute called 'objectType'. The loop checks
-        # the Polygon's attribute type. If it is 'None' that means that the
-        # object has not yet been identified as a Tape or Undulation region.
-        # In this case, the loop sets the objectType attribute of the Polygon
-        # to 'Tape'.
-        # If the objectType of a Polygon is 'Tape' that means
-        # that a previous pass has already assigned an objectType to the
-        # Polygon in question. In other words, there is already a tape placed
-        # in this area in this layer.
-        # If this is the case, the loop sets the attribute of the same Polygon
-        # in the next grid layer to 'Tape'. Essentially, if a tape crossing is
-        # detected then the Tape is placed in the next layer.
+        self.raiseTapes(grids)
+        self.createResinRegions(grids, self.uw)
+        self.raiseResin(grids)
+        self.createUndulations(grids)
+        self.defineConnectivity()
 
-        for i in range(len(self.tapePath)):
-            obj2ID, obj2 = self.tapePath[i]
-            if obj2.objectType is None:
-                setattr(obj2, 'objectType', 'Tape')
-                self.setAngle(obj2, self.angle)
-            elif obj2.objectType == 'Tape' or 'Resin' or 'Undulation':
-                # check layer above
-                m = 2
-                while m <= len(grids):
-                    objGrid = grids[m]  # next grid layer
-                    if objGrid[obj2ID].objectType is None:
-                        setattr(objGrid[obj2ID], 'objectType', 'Tape')
-                        objGrid[obj2ID].layer = m
-                        self.setAngle(objGrid[obj2ID], self.angle)
-                        self.tapePath[i] = (obj2ID, objGrid[obj2ID])
-                        break
-                    else:
-                        m += 1
-
-        # define undulation regions
-        objByLayer = [[(obj5ID, obj5) for (obj5ID, obj5)
-                      in self.tapePath if obj5.layer == s] for s
-                      in range(1, len(grids) + 1)]
-        for n in range(1, len(objByLayer)):
-            bottomLayer = cascaded_union(
-                [obj6 for (obj6ID, obj6) in objByLayer[n - 1]])
-            bottomLayerBuff = bottomLayer.buffer(undulationWidth + 0.0001,
-                                                 join_style=2)
-            topLayer = objByLayer[n]
-            topObjTouchingBottomObj = [(obj7ID, obj7) for (obj7ID, obj7)
-                                       in topLayer
-                                       if obj7.within(bottomLayerBuff)]
-            for (obj8ID, obj8) in topObjTouchingBottomObj:
-                    cellBottom = grids[n][obj8ID]
-                    cellTop = grids[n + 1][obj8ID]
-                    cellTopAngle = [cellBottom.angle[-1]]
-                    cellTop.objectType = 'Undulation'
-                    cellBottom.objectType = 'Undulation'
-                    if len(cellBottom.angle) == 2:
-                        cellBottom.angle = [cellBottom.angle[-1], self.angle]
-                    else:
-                        self.setAngle(cellBottom, self.angle)
-                    self.setAngle(cellTop, cellTopAngle)
-                    self.tapePath.append([obj8ID, cellBottom])
-
-        self.connectivity = []
-        for (obj9ID, obj9) in self.tapePath:
-            ident = '{}-{}'.format(obj9.layer, obj9ID)
-            setattr(obj9, 'objectID', ident)
-            self.connectivity.append(ident)
-
+    def createResinRegions(self, grids, uw):
         # create bordering resin regions
-        self.tapeCentroid = bounds.centroid
+        self.tapeCentroid = self.bounds.centroid
         if self.angle == 90:
 
             # specified clockwise (1,2,3,4)
@@ -215,7 +156,7 @@ class machinePass():
             #  |______________________________________|   Resin region (bottom)
             # 3                                        4
 
-            xx, yy = rotatedBounds.exterior.xy
+            xx, yy = self.rotatedBounds.exterior.xy
             x0 = map(lambda m: round(m, 6), xx)
             y0 = map(lambda n: round(n, 6), yy)
             rCoords = zip(x0, y0)
@@ -248,13 +189,14 @@ class machinePass():
                              in grids[1].iteritems()
                              if obj5.within(resinBounds)]
 
+    def raiseResin(self, grids):
         # lift up overlapping resin regions
         for j in range(len(self.resinRegions)):
             obj4ID, obj4 = self.resinRegions[j]
             if obj4.objectType is None:
                 setattr(obj4, 'objectType', 'Resin')
                 self.setAngle(obj4, self.angle)
-            elif obj4.objectType == 'Tape' or 'Resin' or 'Undulation':
+            elif obj4.objectType == 'Tape':
                 k = 2
                 while k <= len(grids):
                     objGrid2 = grids[k]  # next grid layer
@@ -264,30 +206,121 @@ class machinePass():
                         self.setAngle(objGrid2[obj4ID], self.angle)
                         self.resinRegions[j] = (obj4ID, objGrid2[obj4ID])
                         break
+                    # elif obj4.objectType == 'Undulation' and len(obj4.angle) == 1:
+                    #     self.setAngle(obj4, self.angle)
+                    #     print 'Triggered'
                     else:
                         k += 1
 
-        # self.tapePath.extend(self.resinRegions)
+        self.tapePath.extend(self.resinRegions)
+        self.inbetween(grids, 'Resin')
 
-    # Cannot setattr(Polygon, 'angle, set()) because sets are  mutable.
-    # This would result in all the Polygons sharing the same angle attribute.
-    # Instead initialize the angle attribute with None and then use setAngle
-    # to either create a set with the first angle or add to the set if an
-    # angle has already been assigned.
-    def setAngle(self, obj, angles):
+    def raiseTapes(self, grids):
+        '''
+        The following loop iterates over each Polygon identified as being
+        within the bounds of the current machine pass.
+        Each Polygon has an attribute called 'objectType'. The loop checks
+        the Polygon's attribute type. If it is 'Polygon' that means that the
+        object has not yet been identified as a Tape or Undulation region.
+        In this case, the loop sets the objectType attribute of the Polygon
+        to 'Tape'.
+        If the objectType of a Polygon is 'Tape' or 'Undulation' that means
+        that a previous pass has already assigned an objectType to the
+        Polygon in question. In other words, there is already a tape placed
+        in this area in this layer.
+        If this is the case, the loop sets the attribute of the same Polygon
+        in the next grid layer to 'Tape'. Essentially, if a tape crossing is
+        detected then the Tape is placed in the next layer.
+        '''
+        for i in range(len(self.tapePath)):
+            obj2ID, obj2 = self.tapePath[i]
+            if obj2.objectType is None:
+                setattr(obj2, 'objectType', 'Tape')
+                self.setAngle(obj2, self.angle)
+            elif obj2.objectType == 'Tape':
+                # check layer above
+                m = 2
+                while m <= len(grids):
+                    objGrid = grids[m]  # next grid layer
+                    if objGrid[obj2ID].objectType is None:
+                        setattr(objGrid[obj2ID], 'objectType', 'Tape')
+                        objGrid[obj2ID].layer = m
+                        self.setAngle(objGrid[obj2ID], self.angle)
+                        self.tapePath[i] = (obj2ID, objGrid[obj2ID])
+                        break
+                    else:
+                        m += 1
+        self.inbetween(grids, 'Tape')
+
+    def inbetween(self, grids, objType):
+        objByLayer = [[(objID, obj) for (objID, obj)
+                       in self.tapePath if obj.layer == s and obj.objectType == objType] for s
+                      in range(1, len(grids) + 1)]
+        for n in range(1, len(objByLayer)):
+            # raise regions between objects in the same layer
+            allObjInLayer = cascaded_union([x for (xID, x) in objByLayer[n]])
+            try:
+                allObjBuff = [obj.buffer(2 * self.uw, join_style=2)
+                            for obj in allObjInLayer.geoms]
+                allObjConvexDiff = cascaded_union(
+                    [a.intersection(b) for a, b in combinations(allObjBuff, 2)])
+                for (zID, z) in self.tapePath:
+                    if z.within(allObjConvexDiff):
+                        cell = grids[n + 1][zID]
+                        cell.objectType = objType
+                        cell.layer = n + 1
+                        self.setAngle(cell, self.angle)
+                        idx = [i for (i, el) in self.tapePath].index(zID)
+                        self.tapePath[idx] = (zID, cell)
+            except AttributeError:
+                pass
+
+    def createUndulations(self, grids):
+        '''
+        Create undulation regions
+        '''
+
+        objByLayer = [[(objID, obj) for (objID, obj)
+                       in self.tapePath if obj.layer == s] for s
+                      in range(1, len(grids) + 1)]
+        for n in range(1, len(objByLayer)):
+            topLayer = cascaded_union([x for (xID, x) in objByLayer[n]])
+            bottomLayer = objByLayer[n - 1]
+            topLayerBuff = topLayer.buffer(2 * self.uw + 1.0, join_style=2)
+            bottomObjTouchingTopObj = [(zID, z) for (zID, z) in bottomLayer
+                                       if z.within(topLayerBuff)]
+            for (cellID, cell) in bottomObjTouchingTopObj:
+                cellBottom = grids[n][cellID]
+                cellTop = grids[n + 1][cellID]
+                cellTop.objectType = 'Undulation'
+                cellBottom.objectType = 'Undulation'
+                if len(cellBottom.angle) != 2:
+                    self.setAngle(cellBottom, self.angle)
+                self.setAngle(cellTop, self.angle)
+                self.tapePath.append([cellID, cellTop])
+
+    def defineConnectivity(self):
+        self.connectivity = []
+        for (obj9ID, obj9) in self.tapePath:
+            ident = '{}-{}'.format(obj9.layer, obj9ID)
+            setattr(obj9, 'objectID', ident)
+            self.connectivity.append(ident)
+
+    def setAngle(self, obj, angle):
+        '''
+        Cannot setattr(Polygon, 'angle, set()) because sets are  mutable.
+        This would result in all the Polygons sharing the same angle attribute.
+        Instead initialize the angle attribute with None and then use setAngle
+        to either create a set with the first angle or add to the set if an
+        angle has already been assigned.
+        '''
         if obj.angle is None:
-            if isinstance(angles, list):
-                obj.angle = angles
-            else:
-                obj.angle = [angles]
+            obj.angle = [angle, ]
         else:
-            if isinstance(angles, list):
-                obj.angle.extend(angles)
-            else:
-                obj.angle.append(angles)
+            obj.angle.append(angle)
 
     def __str__(self):
-        return 'MachinePass: Angle = {}'.format(self.angle)
+        return 'afpPass: Angle = {}'.format(self.angle)
 
 # -----------------------------------------------------------------------------
 # This section of the script only runs if this script is run directly (i.e. as
@@ -297,18 +330,34 @@ class machinePass():
 
 if __name__ == '__main__':
     from objectPlot import objPlot
+    import matplotlib.pyplot as plt
 
-    tapeAng = (0, 90)
-    tapeW = (25.0, ) * len(tapeAng)
+    tapeAng = (0, 90, 45)
+    tapeW = (30.0, ) * len(tapeAng)
 
     # create grids
     grids = createGrids(tapeAngles=tapeAng, tapeWidths=tapeW,
                         undulationWidth=1.0)
 
     # place tapes
-    for ang in [0, 90]:
-        passs = machinePass(grids, angle=ang, undulationWidth=1.0)
+    # for ang in [0, 90, 45]:
+        # passs = afpPass(grids, angle=ang, undulationWidth=1.0)
 
+    passs = afpPass(grids, angle=0, undulationWidth=1.0)
     # objPlot(grids, tapeAng, 'Tape')
     # objPlot(grids, tapeAng, 'Resin')
+    # objPlot(grids, tapeAng, 'Undulation')
+    w = 30.0
+    uw = 1.0
+    crds = ([(-300.0, (w / 2) - uw -w), (300.0, (w / 2) - uw - w),
+                    (300.0, (-w / 2) + uw - w), (-300.0, (-w / 2) + uw - w)])
+    passs = afpPass(grids, coords=crds, angle=0, undulationWidth=1.0)
+    passs = afpPass(grids, angle=90, undulationWidth=1.0)
+    # objPlot(grids, tapeAng, 'Tape')
+    # objPlot(grids, tapeAng, 'Resin')
+    # objPlot(grids, tapeAng, 'Undulation')
+
+    # passs = afpPass(grids, angle=45, undulationWidth=1.0)
+    objPlot(grids, tapeAng, 'Tape')
+    objPlot(grids, tapeAng, 'Resin')
     objPlot(grids, tapeAng, 'Undulation')

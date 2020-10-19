@@ -140,11 +140,11 @@ class machinePass():
         # The following loop iterates over each Polygon identified as being
         # within the bounds of the current machine pass.
         # Each Polygon has an attribute called 'objectType'. The loop checks
-        # the Polygon's attribute type. If it is 'None' that means that the
+        # the Polygon's attribute type. If it is 'Polygon' that means that the
         # object has not yet been identified as a Tape or Undulation region.
         # In this case, the loop sets the objectType attribute of the Polygon
         # to 'Tape'.
-        # If the objectType of a Polygon is 'Tape' that means
+        # If the objectType of a Polygon is 'Tape' or 'Undulation' that means
         # that a previous pass has already assigned an objectType to the
         # Polygon in question. In other words, there is already a tape placed
         # in this area in this layer.
@@ -297,18 +297,27 @@ class machinePass():
 
 if __name__ == '__main__':
     from objectPlot import objPlot
+    import matplotlib.pyplot as plt
 
-    tapeAng = (0, 90)
+    tapeAng = (0, 90, 45)
     tapeW = (25.0, ) * len(tapeAng)
 
     # create grids
     grids = createGrids(tapeAngles=tapeAng, tapeWidths=tapeW,
                         undulationWidth=1.0)
 
-    # place tapes
-    for ang in [0, 90]:
-        passs = machinePass(grids, angle=ang, undulationWidth=1.0)
 
-    # objPlot(grids, tapeAng, 'Tape')
-    # objPlot(grids, tapeAng, 'Resin')
-    objPlot(grids, tapeAng, 'Undulation')
+    for (key, poly) in grids[1].iteritems():
+        x, y = poly.exterior.xy
+        plt.plot(x, y)
+    plt.grid(True)
+    plt.show()
+
+    
+    # # place tapes
+    # for ang in [0, 90]:
+    #     passs = machinePass(grids, angle=ang, undulationWidth=1.0)
+
+    # # objPlot(grids, tapeAng, 'Tape')
+    # # objPlot(grids, tapeAng, 'Resin')
+    # objPlot(grids, tapeAng, 'Undulation')

@@ -8,11 +8,9 @@ from math import cos, radians, tan
 This script is used to define the geometry of interlaced laminates.
 This module is imported by the tapePlacement script, which is itself called
 by the shapelyToAbaqus script.
-
 Geometries are created using the Python Shapely library. The script first
 creates multiple polygon grids, each representing a layer in a laminate.
-
-The machinePass class can be used to place tapes to form a laminate.
+A machinepass is defined by the width of a tape and the
 '''
 
 # ----------------------------------------------------------------------------
@@ -53,16 +51,13 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
             offsetList = [offset * k for k
                           in range(0, numberOffsets + 1)]
             for os in offsetList:
-                tapeLineCoords = [((w / 2.0) - uw + os, 300.0),
-                                  ((w / 2.0) - uw + os, -300.0)]
-                resinLineCoords1 = ([((w / 2.0) + os, 300.0),
-                                     ((w / 2.0) + os, -300.0)])
-                resinLineCoords2 = ([((w / 2.0) + os + uw, 300.0),
-                                     ((w / 2.0) + os + uw, -300.0)])
+                tapeLineCoords = [((w / 2.0) - uw + os, 100.0),
+                                  ((w / 2.0) - uw + os, -100.0)]
+                resinLineCoords1 = ([((w / 2.0) + uw + os, 100.0),
+                                     ((w / 2.0) + uw + os, -100.0)])
                 tapeLine = LineString(tapeLineCoords)
                 resinLine1 = LineString(resinLineCoords1)
-                resinLine2 = LineString(resinLineCoords2)
-                partitionLines.extend([tapeLine, resinLine1, resinLine2])
+                partitionLines.extend([tapeLine, resinLine1])
             reflectedLines = [scale(line, xfact=-1, origin=mirrorPoint)
                               for line in partitionLines]
             partitionLines = partitionLines + reflectedLines
@@ -71,20 +66,18 @@ def createGrids(tapeAngles, tapeWidths, undulationWidth=1.0, sample=None):
             offset = w / cos(radians(a))
             maxOffset = (yMax - (w / 2.0) * cos(radians(a))
                          + xMax * tan(radians(a)))
+            # (75.0 - (w/2.0)*cos(radians(a)) + 50.0*tan(radians(a)))
             numberOffsets = int(maxOffset / offset)
             offsetList = [offset * k for k in range(0, numberOffsets + 20)]
             for os in offsetList:
                 tapeLineCoords = [(-300.0, (w / 2.0) - uw + os),
                                   (300.0, (w / 2.0) - uw + os)]
-                resinLineCoords1 = ([(-300.0, (w / 2.0) + os),
-                                     (300.0, (w / 2.0) + os)])
-                resinLineCoords2 = ([(-300.0, (w / 2.0) + os + uw),
-                                     (300.0, (w / 2.0) + os + uw)])
+                resinLineCoords1 = ([(-300.0, (w / 2.0) + uw + os),
+                                     (300.0, (w / 2.0) + uw + os)])
                 rotPoint = Point([(0.0, os), (0.0, os)])
                 tapeLine = rotate(LineString(tapeLineCoords), a, rotPoint)
                 resinLine1 = rotate(LineString(resinLineCoords1), a, rotPoint)
-                resinLine2 = rotate(LineString(resinLineCoords2), a, rotPoint)
-                partitionLines.extend([tapeLine, resinLine1, resinLine2])
+                partitionLines.extend([tapeLine, resinLine1])
             reflectedLines = [rotate(line, 180.0, origin=mirrorPoint)
                               for line in partitionLines]
             partitionLines = partitionLines + reflectedLines
@@ -140,11 +133,11 @@ class machinePass():
         # The following loop iterates over each Polygon identified as being
         # within the bounds of the current machine pass.
         # Each Polygon has an attribute called 'objectType'. The loop checks
-        # the Polygon's attribute type. If it is 'None' that means that the
+        # the Polygon's attribute type. If it is 'Polygon' that means that the
         # object has not yet been identified as a Tape or Undulation region.
         # In this case, the loop sets the objectType attribute of the Polygon
         # to 'Tape'.
-        # If the objectType of a Polygon is 'Tape' that means
+        # If the objectType of a Polygon is 'Tape' or 'Undulation' that means
         # that a previous pass has already assigned an objectType to the
         # Polygon in question. In other words, there is already a tape placed
         # in this area in this layer.
@@ -297,18 +290,25 @@ class machinePass():
 
 if __name__ == '__main__':
     from objectPlot import objPlot
+    import matplotlib.pyplot as plt
 
-    tapeAng = (0, 90)
+    tapeAng = (0, 90, 45)
     tapeW = (25.0, ) * len(tapeAng)
 
     # create grids
     grids = createGrids(tapeAngles=tapeAng, tapeWidths=tapeW,
                         undulationWidth=1.0)
 
+    for (key, poly) in grids[1].iteritems():
+        x, y = poly.exterior.xy
+        plt.plot(x, y)
+    plt.grid(True)
+    plt.show()
+
     # place tapes
-    for ang in [0, 90]:
+    for ang in tapeAng:
         passs = machinePass(grids, angle=ang, undulationWidth=1.0)
 
-    # objPlot(grids, tapeAng, 'Tape')
-    # objPlot(grids, tapeAng, 'Resin')
-    objPlot(grids, tapeAng, 'Undulation')
+    objPlot(grids, tapeAng, 'Tape')
+    objPlot(grids, tapeAng, 'Resin')
+    # objPlot(grids, tapeAng, 'Undulation')

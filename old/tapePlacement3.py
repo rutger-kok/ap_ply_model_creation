@@ -1,82 +1,111 @@
-import numpy as np 
-import math 
-import sigc4 as sigc
+from math import cos, tan, radians
+import sigc3 as sigc
 from shapely.geometry import Polygon
 
 '''
-Define laminate using following 'gene'
+Define laminate using following parameters
 
-(tapeAngles=(...), tapeWidths=(...), tapeSpacing, r)
+(tapeAngles=(...), tapeWidths=(...), tapeSpacing, uw)
 where:
 tapeAngles = tuple of tape angles (floats) corresponding to the number of tapes
 note that the tapes will be 'placed' in the sequence that they are defined!
-tapeWidths = tuple of tape widths corresponding to each tape defined in the 
-tapeAngles parameter (i.e. first tape width corresponds to the tape with the 
-first tape angle). Note that 0 corresponds to NO gap, 1= 1 gap between tapes.
-tapeSpacing = tuple of integers (1 per tape) defining the number of tape gaps 
-to leave between tapes (as above, each spacing term corresponds to the tape 
-with the same index)
-t = tape thickness, this must be the same for each tape 
-r = resin width assumed to be the same for each tape
+tapeWidths = tuple of tape widths corresponding to each tape defined in the
+tapeAngles parameter (i.e. first tape width corresponds to the tape with the
+first tape angle).
+tapeSpacing = tuple of integers (1 per tape) defining the number of tape gaps
+to leave between tapes (as above, each spacing term corresponds to the tape
+with the same index) Note that 0 corresponds to NO gap, 1->1 gap between tapes.
+
 '''
 
-def laminateCreation(grid, tapeAngles, tapeWidths, tapeSpacing, r=1.0):
+
+def laminateCreation(tapeAngles, tapeWidths, tapeSpacing, specimenSize,
+                     xMax=50.0, yMax=75.0, undulationWidth=1.0):
+    # create interlaced laminate instance
+    laminate = sigc.Interlaced(tapeAngles, tapeWidths, undulationWidth,
+                               specimen=specimenSize)
     paths = []
-    tapes = zip(tapeAngles, tapeWidths)
+    tapeProps = zip(tapeAngles, tapeWidths)
     s = tapeSpacing  # spacing
-    for numShift in range(s+1):
-        for tape in tapes:
-            a = tape[0]  # angle
-            w = tape[1]  # width
+    uw = undulationWidth
+    for numShift in range(s + 1):
+        for (a, w) in tapeProps:
             if a == 90:
-                offset = w+2*r
-                spacedOffset = (1+s)*offset
-                maxOffset = 50.0+r+w/2.0
-                numberOffsets = int(maxOffset/spacedOffset)
-                offsetList = [spacedOffset*k for k 
-                    in range(-numberOffsets-numShift,numberOffsets+3-numShift)]
-                shift = numShift*offset
+                offset = w
+                spacedOffset = (1 + s) * offset
+                maxOffset = xMax + w / 2.0
+                numOffsets = int(maxOffset / spacedOffset)
+                offsetList = [spacedOffset * k for k
+                              in range(-numOffsets - numShift - 10,
+                                       numOffsets - numShift + 10)]
+                shift = numShift * offset
                 for os in offsetList:
-                    tapeCoords = (
-                            [(-100.0+os+shift, (w/2.0)),
-                            (100.0+os+shift, (w/2.0)),
-                            (100.0+os+shift, (-w/2.0)),
-                            (-100.0+os+shift, (-w/2.0))])   
-                    createdTape = sigc.machinePass(
-                            grid, coords=tapeCoords, angle=90).tapePath
+                    tapeCoords = ([(-300.0 + os + shift, (w / 2.0) - uw),
+                                   (300.0 + os + shift, (w / 2.0) - uw),
+                                   (300.0 + os + shift, (-w / 2.0) + uw),
+                                   (-300.0 + os + shift, (-w / 2.0) + uw)])
+                    createdTape = laminate.makePass(passCoords=tapeCoords,
+                                                    passAngle=90)
                     paths.append(createdTape)
             else:
-                offset = ((w+2*r))/math.cos(math.radians(a))
-                spacedOffset = ((1+s)*(w+2*r))/math.cos(math.radians(a))
-                maxOffset = (75.0+ (r+w/2.0)*math.cos(math.radians(a))
-                        + 50.0*math.tan(math.radians(a)))
-                numberOffsets = int(maxOffset/spacedOffset)
-                offsetList = [spacedOffset*k for k 
-                    in range(-numberOffsets-numShift,numberOffsets+3-numShift)]
-                shift = numShift*offset
+                offset = w / cos(radians(a))
+                spacedOffset = ((1 + s) * w) / cos(radians(a))
+                maxOffset = ((yMax + w / 2.0) * cos(radians(a))
+                              +  xMax * tan(radians(a)))
+                numOffsets = int(maxOffset / spacedOffset)
+                offsetList = [spacedOffset * k for k
+                              in range(-numOffsets - numShift - 10,
+                                       numOffsets - numShift + 10)]
+                shift = numShift * offset
                 for os in offsetList:
-                    tapeCoords = (
-                            [(-150.0, (w/2.0)+os+shift),
-                            (150.0, (w/2.0)+os+shift),
-                            (150.0, (-w/2.0)+os+shift),
-                            (-150.0, (-w/2.0)+os+shift)])    
-                    createdTape = sigc.machinePass(
-                            grid, coords=tapeCoords, angle=a).tapePath
+                    tapeCoords = ([(-300.0, ((w / 2.0) - uw) + os + shift),
+                                   (300.0, ((w / 2.0) - uw) + os + shift),
+                                   (300.0, ((-w / 2.0) + uw) + os + shift),
+                                   (-300.0, ((-w / 2.0) + uw) + os + shift)])
+                    createdTape = laminate.makePass(passCoords=tapeCoords,
+                                                    passAngle=a)
                     paths.append(createdTape)
-    return paths
+    trimmedGrid = laminate.returnTrimmedGrid()    
+    return paths, trimmedGrid
 
 # -----------------------------------------------------------------------------
 # This section of the script only runs if this script is run directly (i.e. as
 # long as this script is not imported). It plots the geometries for testing
 # purposes.
 
-if __name__ == '__main__':
-    import matplotlib.pyplot as plt
-    # define tape width and thickness
-    grid1 = sigc.createGrids(tapeAngles=(0,90), tapeWidths=(20,20))
-    tapePaths = laminateCreation(grid1, tapeAngles=(0,90), tapeWidths=(20,20), tapeSpacing=2)
-    # print grid1
-    # sigc.objPlot(grid1,(0,90), 'Tape')
-    # sigc.objPlot(grid1, (0,90), 'Undulation')
-    # sigc.objPlot(grid1, (0,90), 'Resin')
 
+if __name__ == '__main__':
+    from objectPlot import objPlot
+    # import matplotlib.pyplot as plt
+
+    # define tape width and thickness
+    tapeAngles = (0, 90)
+    tapeWidths = (20,) * len(tapeAngles)
+    tapeSpacing = 1
+    cpt = 0.18
+    undulationRatio = 0.18
+    rw = cpt / undulationRatio
+
+    xMin = yMin = -(tapeWidths[0] / 2.0)
+    xMax = yMax = xMin + (tapeSpacing + 1) * (tapeWidths[0])
+    numLayers = len(tapeAngles) * 2.0  # symmetric
+    laminateThickness = numLayers * cpt
+    zMax = laminateThickness / 2.0
+    zMin = -zMax
+    dimensions = [xMin, yMin, zMin, xMax, yMax, zMax]
+
+    rvePoly = Polygon([(xMin, yMin), (xMax, yMin), (xMax, yMax), (xMin, yMax)])
+
+    tapePaths, grid = laminateCreation(
+        tapeAngles, tapeWidths, tapeSpacing, rvePoly,
+        undulationWidth=rw, xMax=xMax, yMax=yMax)
+
+    # for (key,poly) in grid[1].iteritems():
+    #     x,y = poly.exterior.xy
+    #     plt.plot(x,y)
+    # plt.grid(True)
+    # plt.show()
+
+    objPlot(grid, tapeAngles, 'Tape', sample=rvePoly)
+    objPlot(grid, tapeAngles, 'Resin', sample=rvePoly)
+    objPlot(grid, tapeAngles, 'Undulation', sample=rvePoly)

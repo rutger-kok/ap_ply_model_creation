@@ -4,7 +4,7 @@
 # Last modified: 12/08/2019
 # ****************************************************************************
 
-from math import cos, radians, pi, sin
+import math
 import numpy as np
 
 '''
@@ -28,8 +28,8 @@ n = 200  # number of increments
 def rotateLaminaStiffness(Ck, theta, alpha):
     # returns Ck_rot, rotated lamina C
     # define the transformation matrix for in-plane rotation
-    m = cos(theta)
-    n = sin(theta)
+    m = math.cos(theta)
+    n = math.sin(theta)
     T_ip = np.array(
                     [(m**2, n**2, 0.0, 0.0, 0.0, 2*m*n),
                      (n**2, m**2, 0.0, 0.0, 0.0, -2*m*n),
@@ -40,8 +40,8 @@ def rotateLaminaStiffness(Ck, theta, alpha):
     T_ip_inv = np.linalg.inv(T_ip)  # invert in-plane rotation matrix
 
     # define the transformation matrix for out-of-plane rotation
-    g = cos(alpha)
-    h = sin(alpha)
+    g = math.cos(alpha)
+    h = math.sin(alpha)
     T_oop = np.array(
                      [(g**2, 0.0, h**2, 0.0, -2*g*h, 0.0),
                       (0.0, 1.0, 0.0, 0.0, 0.0, 0.0),
@@ -84,42 +84,28 @@ def engineeringConstants(Cmatrix):  # returns eng_const, engineering constants
 
 def undulationGeometry(cpt, L_u, n):  # returns V, alpha, ratio
     # adapted for application to Abaqus; non-symmetric undulation
-    # import matplotlib.pyplot as plt
-    x, dx = np.linspace(1 * 10**-12, L_u, n, retstep=True)  # discretize x
+    x = np.linspace(0, L_u, n)  # discretize x
 
     h_1 = [0.0 for _ in range(n)]
-    h_2 = 0.25*cpt + 0.25*cpt*np.sin((pi/(2*L_u))*(x - L_u))
+    h_2 = 0.5*cpt + 0.5*cpt*np.sin((math.pi/2*L_u)*(x - L_u))
     h_3 = [0.5*cpt for _ in range(n)]
 
-    dz = np.diff(h_2)
-    dz = np.insert(dz, 0, 0, axis=0)
-    alpha = np.arctan(dz / dx)
+    alpha = np.arctan(h_2 / x)
     alpha[np.isnan(alpha)] = 0.0  # replace NaNs with 0.0
 
-    # plt.plot(x, h_1)
-    # plt.plot(x, h_2)
-    # plt.plot(x, h_3)
-    # plt.show()
-    # plt.plot(x, np.degrees(alpha))
-    # plt.show()
-
     # ply volume fractions
-    Vk1 = (h_2-h_1)/(cpt/2.0)
-    Vk2 = (h_3-h_2)/(cpt/2.0)
+    Vk1 = (h_2-h_1)/cpt
+    Vk2 = (h_3-h_2)/cpt
     V = [[Vk1[s], Vk2[s]] for s in range(n)]
 
     return V, alpha
 
 
-def determineStiffness(C_lamina1, C_lamina2, alpha, O_1, O_2, V, n, undPly):
+def determineStiffness(C_lamina1, C_lamina2, alpha, O_1, O_2, V, n):
     C = []
     for a in range(n):
-        if undPly == 1:
-            Ck1 = rotateLaminaStiffness(C_lamina1, O_1, 0.0)  # alpha[a]
-            Ck2 = rotateLaminaStiffness(C_lamina2, O_2, 0.0)
-        elif undPly == 2:
-            Ck1 = rotateLaminaStiffness(C_lamina1, O_1, 0.0)
-            Ck2 = rotateLaminaStiffness(C_lamina2, O_2, 0.0)
+        Ck1 = rotateLaminaStiffness(C_lamina1, O_1, 0.0)
+        Ck2 = rotateLaminaStiffness(C_lamina2, O_2, alpha[a])
         Ck = [Ck1, Ck2]
         Cx = np.zeros((6, 6), dtype=float)
         for i in (0, 1, 2, 5):
@@ -181,6 +167,9 @@ def CFromConstants(E_11, E_22, nu_12, nu_23, G_12, G_23):
     # Material Parameters
     # VTC401 T700 props as estimated using Autodesk Composite
     E_33 = E_22
+    nu_13 = nu_12
+    nu_21 = nu_12*(E_22/E_11)
+    nu_31 = nu_13*(E_33/E_22)
     nu_32 = nu_23*(E_33/E_22)
 
     # Compliance
@@ -192,7 +181,7 @@ def CFromConstants(E_11, E_22, nu_12, nu_23, G_12, G_23):
     S31 = S13
     S32 = S23
     S66 = S55 = 1/G_12
-    S44 = (2.0 * (1 + nu_23)) / E_22
+    S44 = 1/G_23
 
     Slamina = np.array(
                        [(S11, S12, S13, 0.0, 0.0, 0.0),
@@ -206,56 +195,30 @@ def CFromConstants(E_11, E_22, nu_12, nu_23, G_12, G_23):
     return Clamina
 
 
-def CIsotropic(E, nu):
-    # NOTE: this assumes transverse isotropy! (12 and 13 are the same)
-    # Material Parameters
-    # VTC401 resin props
-    D = E / ((1 + nu) * (1 - 2 * nu))
-    Clamina = D * np.array(
-                           [(1.0 - nu, nu, nu, 0.0, 0.0, 0.0),
-                            (nu, 1.0 - nu, nu, 0.0, 0.0, 0.0),
-                            (nu, nu, 1.0 - nu, 0.0, 0.0, 0.0),
-                            (0.0, 0.0, 0.0, (1.0 - 2.0 * nu) / 2.0, 0.0, 0.0),
-                            (0.0, 0.0, 0.0, 0.0, (1.0 - 2.0 * nu) / 2.0, 0.0),
-                            (0.0, 0.0, 0.0, 0.0, 0.0, (1.0 - 2.0 * nu) / 2.0)])
-    return Clamina
-
-
-def print6x6(matrix):  # function to print a more clear 6x6 matrix
-    print '_'*41
-    for c1, c2, c3, c4, c5, c6 in matrix:
-        rc1 = round(c1, 2)
-        rc2 = round(c2, 2)
-        rc3 = round(c3, 2)
-        rc4 = round(c4, 2)
-        rc5 = round(c5, 2)
-        rc6 = round(c6, 2)
-        print "{:6s}|{:6s}|{:6s}|{:6s}|{:6s}|{:6s}".format(
-            str(rc1), str(rc2), str(rc3), str(rc4), str(rc5), str(rc6))
-    print '_'*41
-
-
+# IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 if __name__ == '__main__':
-    Clamina = CFromConstants(146.8, 11.6, 0.289, 0.298, 6.47, 4.38)
-    Cresin = CIsotropic(7.47, 0.32)
+    import matplotlib.pyplot as plt
+
+    def print6x6(matrix):  # function to print a more clear 6x6 matrix
+        print '_'*41
+        for c1, c2, c3, c4, c5, c6 in matrix:
+            rc1 = round(c1, 2)
+            rc2 = round(c2, 2)
+            rc3 = round(c3, 2)
+            rc4 = round(c4, 2)
+            rc5 = round(c5, 2)
+            rc6 = round(c6, 2)
+            print "{:6s}|{:6s}|{:6s}|{:6s}|{:6s}|{:6s}".format(
+                str(rc1), str(rc2), str(rc3), str(rc4), str(rc5), str(rc6))
+        print '_'*41
+
+    Clamina = CFromConstants(140.4, 11.6, 0.289, 0.298, 6.47, 4.38)
     n = 200  # number of increments
-    cpt = 0.18
-    L_u = 2.0  # total length of the undulation
-    O1 = radians(0)  # in-plane angle of non-undulating plies
-    O2 = radians(90)  # in-plane angle of undulating plies
+    cpt = 0.2
+    L_u = 1.0  # total length of the undulation
+    O1 = math.radians(90)  # in-plane angle of non-undulating plies
+    O2 = math.radians(0)  # in-plane angle of undulating plies
 
     Vfrac, a = undulationGeometry(cpt, L_u, n)
-    temp1, temp2 = determineStiffness(Clamina, Clamina, a, O1, O2, Vfrac, n, 1)
+    temp1, temp2 = determineStiffness(Clamina, Clamina, a, O1, O2, Vfrac, n)
     print6x6(temp1)
-    print engineeringConstants(temp1)
-    print engineeringConstants(temp2)
-
-    # [36.36052442535955, 122.69029832670464, 12.299675983777998,
-    #  0.027423197199879134, 0.3095450687252818, 0.33512281424763624,
-    #  6.470000000000022, 4.747598823159791, 6.006130513188353]
-    # [121.43914503158554, 10.98795433060912, 10.95122693710471,
-    #  0.2934381863069091, 0.29559571300466486, 0.325240850916959,
-    #  5.807316017495911, 5.373444728330849, 4.0679856613081204]
-    # [79.58332890220537, 79.58332890220537, 12.437285501610992,
-    #  0.04232828282828261, 0.32763747483336897, 0.3276374748333689,
-    #  6.470000000000022, 5.286074294657164, 5.286074294657164]

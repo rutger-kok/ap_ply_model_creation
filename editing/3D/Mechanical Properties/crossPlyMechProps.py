@@ -7,17 +7,12 @@ import os
 from sys import path
 import ast
 path.append('C:\\Python27\\Lib\\site-packages')
-path.append("R:")
-from shapely.geometry import Polygon
-import sigc as sigc
-import interlacedMaterials as mats
-import tapePlacement as tp
-
+path.append('C:\\Workspace\\3D_Mechprops')
+import interlacedMaterials2 as mats
 
 class TensileModel():
-    def __init__(self, specimenType, undulationRatio):
-        ratioString = str(undulationRatio).replace('.', '_')
-        self.modelName = '{}-{}'.format(specimenType, ratioString)
+    def __init__(self):
+        self.modelName = 'Cross-Ply'
         mdb.Model(name=self.modelName, modelType=STANDARD_EXPLICIT)
         self.model = mdb.models[self.modelName]
         self.assembly = self.model.rootAssembly
@@ -27,30 +22,30 @@ class TensileModel():
             os.makedirs(wd)
         os.chdir(wd)
 
-    def setTestParameters(self, time, outputIntervals):
-        '''Set drop weight tower test parameters'''
+    def setTestParameters(self, time, outputIntervals, testSpeed):
+        '''Set test parameters'''
         self.time = time
         self.outputIntervals = outputIntervals
+        self.testSpeed = testSpeed
 
-    def setSpecimenParameters(self, t_angles, t_widths, t_spacing, t_thickness,
-                              u_ratio, nPlies):
+    def setSpecimenParameters(self, dimensions, angles, plyThickness,
+                              meshSize, nPlies):
         '''
         Set interlaced specimen parameters. Note t_xxx indicates a tape
         property, u_xxx indicates an undulation property, and l_xxx indicates
         a laminate property
         '''
-        self.t_angles = t_angles
-        self.t_widths = [t_widths] * len(self.t_angles)
-        self.t_spacing = t_spacing
-        self.t_thickness = t_thickness
-        self.u_ratio = u_ratio
+        self.t_angles = angles
+        self.t_thickness = plyThickness
         self.nPlies = nPlies
-        self.sequences = (nPlies / int(len(self.t_angles))) / 2
-        self.u_width = (self.t_thickness / self.u_ratio) / 2.0
+        self.dimensions = dimensions
+        self.meshSize = meshSize
+        m = (self.nPlies / int(len(angles))) / 2
+        self.plySequence = self.t_angles * m
         self.l_thickness = nPlies * self.t_thickness
 
     def createMaterials(self):
-        '''Create material data (uses imported matData module)'''
+        '''Create material data (uses imported module)'''
         E11 = 146.8
         E22 = E33 = 11.6
         nu12 = nu13 = 0.289
@@ -75,86 +70,29 @@ class TensileModel():
         mats.tapeDamage(self.model, E11, E22, E33, nu12, nu13, nu23, G12, G13,
                         G23, density, Xt, Xc, Yt, Yc, Sl, alpha0, G1Plus,
                         G1Minus, G2Plus, G2Minus, G6)
-        mats.undulationDamage(self.model, E11, E22, E33, nu12, nu13, nu23, G12,
-                              G13, G23, density, Xt, Xc, Yt, Yc, Sl, alpha0,
-                              G1Plus, G1Minus, G2Plus, G2Minus, G6,
-                              self.t_angles, self.t_thickness, self.u_width)
-        mats.undulationElastic(self.model, E11, E22, E33, nu12, nu13, nu23,
-                               G12, G13, G23, density, self.t_angles,
-                               self.t_thickness, self.u_width)
-        mats.undulationDamageResin(self.model, E11, E22, E33, nu12, nu13, nu23,
-                                   G12, G13, G23, density, Xt, Xc, Yt, Yc, Sl,
-                                   alpha0, G1Plus, G1Minus, G2Plus, G2Minus,
-                                   G6, self.t_angles, self.t_thickness,
-                                   self.u_width)
-        mats.undulationElasticResin(self.model, E11, E22, E33, nu12, nu13,
-                                    nu23, G12, G13, G23, density,
-                                    self.t_angles, self.t_thickness,
-                                    self.u_width)
-        mats.resinElastic(self.model)
 
-    def createTapePaths(self, specimenDimensions):
-        # create grids using shapely
-        tapePaths, partGrid = tp.laminateCreation(
-            tapeAngles=self.t_angles, tapeWidths=self.t_widths,
-            tapeSpacing=self.t_spacing, specimenSize=specimenDimensions,
-            undulationWidth=self.u_width, xMax=xMax, yMax=yMax)
-        return tapePaths, partGrid
-
-    def create3DTapePart(self, obj, objectID, sequence, damage=True,
-                         symmetric=False):
+    def createPly(self, number, angle, damage=True, symmetric=False):
         '''
         This function is used to create Tape parts using geometric info from
         Shapely.
         '''
-        uniqueID = '{}-{}'.format(obj.layer, objectID)
-        x0, y0 = obj.exterior.xy
-        abqCoords = zip(x0, y0)
+        xMin, yMin, xMax, yMax = self.dimensions
         sketch = self.model.ConstrainedSketch(
-            name='Sketch {}'.format(uniqueID), sheetSize=200.0)
-        for ind in range(len(abqCoords) - 1):
-            sketch.Line(point1=(abqCoords[ind][0], abqCoords[ind][1]),
-                        point2=(abqCoords[ind + 1][0], abqCoords[ind + 1][1]))
+            name='Ply Sketch {}'.format(number), sheetSize=200.0)
+        sketch.rectangle(point1=(xMin, yMin), point2=(xMax, yMax))
         # extrude profile to create part
-        part = self.model.Part(name='Part {}'.format(uniqueID),
+        part = self.model.Part(name='Ply {}'.format(number),
                                dimensionality=THREE_D, type=DEFORMABLE_BODY)
         part.BaseSolidExtrude(sketch=sketch, depth=self.t_thickness)
         cells = part.cells  # all cells within part (only 1 cell)
         cellRegion = regionToolset.Region(cells=cells[:])
-        if obj.objectType == 'Tape':
-            if damage:
-                secName = 'Tape-Damage-Section'
-            else:
-                secName = 'Tape-Elastic-Section'
-            part.SectionAssignment(
-                region=cellRegion, sectionName=secName,
-                offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
-                thicknessAssignment=FROM_SECTION)
-        elif obj.objectType == 'Undulation':
-            if len(obj.angle) == 1:
-                if damage:
-                    secName = 'Undulation-Damage-Resin-Section'
-                else:
-                    secName = 'Undulation-Elastic-Resin-Section'
-            else:
-                interfaceAngle = abs(obj.angle[0] - obj.angle[1])
-                secAngle = (0, interfaceAngle)
-                if damage:
-                    secName = 'Undulation-Damage-{}-Section'.format(secAngle)
-                else:
-                    secName = 'Undulation-Elastic-{}-Section'.format(secAngle)
-            part.SectionAssignment(
-                region=cellRegion, thicknessAssignment=FROM_SECTION,
-                offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
-                sectionName=secName)
-        else:
-            part.SectionAssignment(
-                region=cellRegion, sectionName='Resin-Elastic-Section',
-                offsetType=MIDDLE_SURFACE, thicknessAssignment=FROM_SECTION,
-                offset=0.0, offsetField='')
+        part.SectionAssignment(
+            region=cellRegion, sectionName='Tape-Damage-Section',
+            offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='',
+            thicknessAssignment=FROM_SECTION)
         part.MaterialOrientation(
             region=cellRegion, orientationType=SYSTEM, stackDirection=STACK_3,
-            angle=obj.angle[-1], additionalRotationType=ROTATION_ANGLE,
+            angle=abs(angle - 90.0), additionalRotationType=ROTATION_ANGLE,
             axis=AXIS_3, fieldName='', additionalRotationField='',
             localCsys=None)
 
@@ -163,9 +101,8 @@ class TensileModel():
         part.generateMesh()
 
         # create the part instance
-        instanceName = 'Instance3D-{}-{}'.format(sequence, uniqueID)
-        sequenceOffset = sequence * self.t_thickness * len(self.t_angles)
-        zOffset = sequenceOffset + (obj.layer - 1) * self.t_thickness
+        instanceName = 'Ply Instance - {}'.format(number)
+        zOffset = number * self.t_thickness
         self.assembly.Instance(name=instanceName, part=part, dependent=ON)
         self.assembly.translate(instanceList=(instanceName, ),
                                 vector=(0.0, 0.0, zOffset))
@@ -177,61 +114,10 @@ class TensileModel():
                 instanceList=('Mirror-' + instanceName, ),
                 vector=(0.0, 0.0,
                         self.l_thickness - zOffset - self.t_thickness))
-            objCentroid = obj.centroid.coords
-            rotPoint = (objCentroid[0][0], objCentroid[0][1],
-                        (self.l_thickness - zOffset) - self.t_thickness / 2.0)
-            self.assembly.rotate(
-                instanceList=('Mirror-' + instanceName, ), angle=180.0,
-                axisPoint=rotPoint, axisDirection=(1.0, 0.0, 0.0))
 
-    def create3DTapePartGroup(self, partGrid, meshSize):
-        self.meshSize = meshSize
-        for sequence in range(self.sequences):
-            for layerNumber in range(1, len(partGrid) + 1):
-                for objID, obj in partGrid[layerNumber].iteritems():
-                    self.create3DTapePart(obj, objID, sequence)
-
-    def merge3DTapes(self, partGrid, tapePaths, symmetric=False):
-        if symmetric:
-            for mirrorBool in (True, False):
-                for sequence in range(self.sequences):
-                    for (pathNumber, tapePath) in enumerate(tapePaths):
-                        self.mergeInstances(partGrid, pathNumber, tapePath,
-                                            sequence, mirror=mirrorBool)
-        else:
-            for sequence in range(self.sequences):
-                    for (pathNumber, tapePath) in enumerate(tapePaths):
-                        self.mergeInstances(partGrid, pathNumber, tapePath,
-                                            sequence, mirror=False)
-
-    def mergeInstances(self, partGrid, pathNumber, tapePath, sequence,
-                       mirror):
-        if mirror:
-            searchString = 'Mirror-Instance3D-{}-'.format(sequence)
-        else:
-            searchString = 'Instance3D-{}-'.format(sequence)
-        if len(tapePath) > 1:
-            layer, gridID = tapePath[0].split('-')
-            pathAngle = partGrid[int(layer)][int(gridID)].angle[-1]
-            instanceList = [self.assembly.instances[searchString + str(inst)]
-                            for inst in tapePath]
-            if mirror:
-                instName = 'Mirror-Pass3D-{}-{}'.format(sequence, pathNumber)
-            else:
-                instName = 'Pass-3D-{}-{}'.format(sequence, pathNumber)
-            self.assembly.InstanceFromBooleanMerge(
-                name=instName, instances=instanceList, domain=BOTH,
-                keepIntersections=ON, originalInstances=DELETE, mergeNodes=ALL,
-                nodeMergingTolerance=1e-06)
-            passPart = self.model.parts[instName]
-            passRegion = regionToolset.Region(cells=passPart.cells[:])
-            passPart.MaterialOrientation(
-                region=passRegion, orientationType=SYSTEM, axis=AXIS_3,
-                localCsys=None, fieldName='', stackDirection=STACK_3,
-                additionalRotationType=ROTATION_ANGLE, angle=pathAngle,
-                additionalRotationField='')
-            passPart.seedPart(size=self.meshSize)
-            passPart.generateMesh()
+    def createPlies(self):
+        for plyNumber, angle in enumerate(reversed(self.plySequence)):
+            self.createPly(plyNumber, angle)
 
     def createExplicitStep(self):
         # mass scaling applied if increment < 1e-6
@@ -412,12 +298,8 @@ if __name__ == '__main__':
     testSpeed = 0.5  # crosshead velocity
 
     # Material parameters
-    specimenType = 'B'
     tapeAngles = (0, 90)  # define angles of tapes
-    tapeWidths = 15.0
-    tapeSpacing = 1  # number of gaps between tapes in interlacing pattern
     tapeThickness = 0.18  # cured ply thickness e.g. 0.18125
-    undulationRatio = 0.09  # ratio of undulation amplitude to length
     nLayers = 4  # symmetric 8 ply laminate
 
     # Mesh sizes
@@ -425,34 +307,20 @@ if __name__ == '__main__':
     mediumMesh = 1.0
     coarseMesh = 3.0
 
-    # Define specimen dimensions
-    # xMin = -25.0
-    # xMax = -xMin
-    # yMin = -75.0
-    # yMax = -yMin
-    # fineRegion = Polygon([(xMin, yMin), (xMax, yMin), (xMax, yMax),
-    #                       (xMin, yMax)])
-    # dimensions = [xMin, yMin, xMax, yMax]
-
     # RVE dimensions
-    xMin = yMin = -(tapeWidths / 2.0)
-    xMax = yMax = xMin + (tapeSpacing + 1) * (tapeWidths)
+    xMin = -10.0
+    xMax = -xMin
     yMin = -75.0
-    yMax = 75.0
-    fineRegion = Polygon([(xMin, yMin), (xMax, yMin), (xMax, yMax),
-                         (xMin, yMax)])
+    yMax = -yMin
     dimensions = [xMin, yMin, xMax, yMax]
     
-
     # Create model
-    mdl = TensileModel(specimenType, undulationRatio)
+    mdl = TensileModel()
     mdl.setTestParameters(time, outputIntervals, testSpeed)
-    mdl.setSpecimenParameters(tapeAngles, tapeWidths, tapeSpacing,
-                              tapeThickness, undulationRatio, nLayers)
+    mdl.setSpecimenParameters(dimensions, tapeAngles, tapeThickness,
+                              mediumMesh, nLayers)
     mdl.createMaterials()
-    paths_f, grid_f = mdl.createTapePaths(fineRegion)
-    mdl.create3DTapePartGroup(grid_f, mediumMesh)
-    mdl.merge3DTapes(grid_f, paths_f)
+    mdl.createPlies()
     mdl.createExplicitStep()
     mdl.applyContraints(dimensions)
     mdl.createInteractionProperty()

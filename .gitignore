@@ -1,6 +1,7 @@
 
-editing/3D/Mechanical Properties/Parametric/abaqus4.rec
-editing/3D/Mechanical Properties/Parametric/abaqus_acis.log
-editing/3D/Mechanical Properties/Parametric/abaqus.rpy
-mesoscale/Royce/abaqus.rpy
-mesoscale/Royce/abaqus_acis.log
+*.rpy
+*.pyc
+*.acis
+*.log
+*.rec
+*.[1-9]

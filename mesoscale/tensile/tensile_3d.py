@@ -1,8 +1,5 @@
 from abaqus import *
 from abaqusConstants import *
-from math import pi
-import mesh
-import regionToolset
 from sys import path
 path.append('C:\\Python27\\Lib\\site-packages')
 path.append('C:\\GitHub\\interlaced_model_creation\\mesoscale')
@@ -15,63 +12,58 @@ class TensileModel(Interlaced3D):
         Interlaced3D.__init__(self, model_name, dir_name)
 
     def set_test_parameters(self, time, test_speed, output_intervals,
-                            mesh_size, damage_mode):
+                            mesh_size, damage_mode, symmetry_mode):
         '''Set test parameters'''
         self.time = time  # simulation time in ms
         self.test_speed = test_speed  # crosshead velocity in mm/s
         self.output_intervals = output_intervals  # number of output intervals
         self.mesh_size = mesh_size  # mesh size in mm
         self.damage_mode = damage_mode  # damage mode: 'ON' or 'OFF'
+        self.symmetry_mode = symmetry_mode  # 'BC' or 'GEOM'
 
-    def apply_constraints(self, symmetric=False):
+    def apply_constraints(self):
         '''
         This method applies constraints to the assembly.
 
         Args:
-            symmetric (boolean): False if the assembly does not contain
-                mirrored instances (i.e. symmetry is enforced through a
-                constraint rather than through geometric symmetry)
+            None
 
         Returns:
             None
         '''
         tol = 0.001
-        x, y = zip(*self.specimen_size.exterior.coords)
-        x_max = max(x)  # determine max x-value for offsets
-        y_max = max(y)
-        x_min = min(x)  # determine max x-value for offsets
-        y_min = min(y)
-        z_min = 0.0
-        z_max = self.l_thickness
+        if self.symmetry_mode == 'BC':
+            z_min = 0.0
+            z_max = self.l_thickness / 2.0
+        else:
+            z_min = -self.l_thickness / 2.0
+            z_max = self.l_thickness / 2.0
 
         # identify faces at top and bottom for coupling
-        top_faces_box = (x_min - tol, y_max - tol, z_min - tol, x_max + tol,
-                         y_max + tol, z_max + tol)
+        top_faces_box = (
+            self.x_min - tol, self.y_max - tol, z_min - tol,
+            self.x_max + tol, self.y_max + tol, z_max + tol)
         top_faces = self.get_faces_by_bounding_box(top_faces_box)
-        top_faces_surface = self.assembly.Surface(side1Faces=top_faces,
-                                                  name='Top Faces')
-        bottom_faces_box = (x_min - tol, y_min - tol, z_min - tol, x_max + tol,
-                            y_min + tol, z_max + tol)
+        top_faces_surface = self.assembly.Surface(
+            side1Faces=top_faces, name='Top Faces')
+        bottom_faces_box = (
+            self.x_min - tol, self.y_min - tol, z_min - tol,
+            self.x_max + tol, self.y_min + tol, z_max + tol)
         bottom_faces = self.get_faces_by_bounding_box(bottom_faces_box)
-        bottom_faces_surface = self.assembly.Surface(side1Faces=bottom_faces,
-                                                     name='Bottom Faces')
-        symmetric_faces_box = (x_min - tol, y_min - tol, -tol, x_max + tol,
-                               y_max + tol, tol)
-        symmetric_faces = self.get_faces_by_bounding_box(symmetric_faces_box)
-        symmetric_faces_set = self.assembly.Set(faces=symmetric_faces,
-                                                name='Symmetry Faces')
+        bottom_faces_surface = self.assembly.Surface(
+            side1Faces=bottom_faces, name='Bottom Faces')
 
         # create reference points for coupling
         rf_point_1_id = self.assembly.ReferencePoint(
             point=(0.0, y_max + 5.0, 0.0)).id
         rf_point_1 = self.assembly.referencePoints[rf_point_1_id]
-        rf_point_1_region = self.assembly.Set(referencePoints=(rf_point_1,),
-                                              name='Reference Point 1')
+        rf_point_1_region = self.assembly.Set(
+            referencePoints=(rf_point_1,), name='Reference Point 1')
         rf_point_2_id = self.assembly.ReferencePoint(
             point=(0.0, y_min - 5.0, 0.0)).id
         rf_point_2 = self.assembly.referencePoints[rf_point_2_id]
-        rf_point_2_region = self.assembly.Set(referencePoints=(rf_point_2,),
-                                              name='Reference Point 2')
+        rf_point_2_region = self.assembly.Set(
+            referencePoints=(rf_point_2,), name='Reference Point 2')
 
         self.model.Coupling(
             name='Top Coupling', controlPoint=rf_point_1_region,
@@ -109,9 +101,17 @@ class TensileModel(Interlaced3D):
                 ur1=0.0, ur2=0.0, ur3=0.0, amplitude=UNSET, fixed=OFF,
                 distributionType=UNIFORM, fieldName='', localCsys=None)
 
-        if symmetric is False:  # only create Z-symmetry if no mirrored parts
-            self.model.ZsymmBC(name='Symmetry', createStepName='Loading Step',
-                               region=symmetric_faces_set, localCsys=None)
+        if self.symmetry_mode == 'BC':
+            symmetric_faces_box = (
+                self.x_min - tol, self.y_min - tol, -tol,
+                self.x_max + tol, self.y_max + tol, tol)
+            symmetric_faces = self.get_faces_by_bounding_box(
+                symmetric_faces_box)
+            symmetric_faces_set = self.assembly.Set(
+                faces=symmetric_faces, name='Symmetry Faces')
+            self.model.ZsymmBC(
+                name='Symmetry', createStepName='Loading Step',
+                region=symmetric_faces_set, localCsys=None)
 
 
 if __name__ == '__main__':
@@ -120,7 +120,8 @@ if __name__ == '__main__':
     time = 5.0  # duration to simulate [ms]
     output_intervals = 50  # requested field output intervals
     crosshead_velocity = 0.5
-    damage_mode = 'ON'
+    damage_mode = 'OFF'
+    symmetry_mode = 'GEOM'
 
     # Material parameters
     tape_angles = (0, 45, 90, -45)  # define angles of tapes
@@ -128,7 +129,7 @@ if __name__ == '__main__':
     tape_spacing = 3  # number of gaps between tapes in interlacing pattern
     cured_ply_thickness = 0.18  # cured ply thickness e.g. 0.18125
     undulation_ratio = 0.09  # ratio of undulation amplitude to length
-    number_of_plies = 4  # symmetric 8 ply laminate
+    number_of_plies = 8  # symmetric 4 ply laminate
 
     # Mesh sizes
     mesh_size = 1.0
@@ -142,16 +143,18 @@ if __name__ == '__main__':
                              (x_min, y_max)])
 
     # Create model
-    mdl = TensileModel('XP_explicit')
+    mdl = TensileModel('QI_implicit_3')
+    mdl.create_implicit_step()
     mdl.set_test_parameters(time, crosshead_velocity, output_intervals,
-                            mesh_size, damage_mode)
+                            mesh_size, damage_mode, symmetry_mode)
     mdl.set_specimen_parameters(tape_angles, tape_widths, tape_spacing,
                                 cured_ply_thickness, undulation_ratio,
                                 number_of_plies)
     mdl.create_materials()
-    paths_f, angles_f, ids_f, grid_f = mdl.create_tape_paths(specimen_size)
-    mdl.create_part(x_min, y_min, x_max, y_max, grid_f)
-    mdl.create_explicit_step()
+    paths_f, angles_f, grid_f = mdl.create_tape_paths(specimen_size)
+    mdl.create_parts(grid_f)
+    mdl.create_sequences()
+    mdl.create_cohesive_interactions(tie=True)
     mdl.apply_constraints()
     mdl.create_job()
     mdl.save_model()

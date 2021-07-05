@@ -4,7 +4,7 @@ The class contains methods to define the parameters of the interlaced laminate,
 create the tape paths and part grid from Shapely which define the geometry of
 the laminate, and create the materials required.
 
-(c) Rutger Kok, 25/11/2020
+(c) Rutger Kok, 21/06/2021
 '''
 from abaqus import *
 from abaqusConstants import *
@@ -61,47 +61,48 @@ class InterlacedModel(AbaqusModel):
         Returns:
             None
         '''
-        E11 = 146.8
-        E22 = E33 = 11.6
-        nu12 = nu13 = 0.289
-        nu23 = 0.298
-        G12 = G13 = 6.47
-        G23 = 4.38
-        Xt = 2.354
-        Xc = 1.102
-        Yt = 0.0343
-        Yc = 0.184
-        Sl = 0.0827
+        # Material input data
+        E11 = 116.6
+        E22 = E33 = 7.231
+        nu12 = nu13 = 0.339
+        nu23 = 0.374
+        G12 = G13 = 3.268
+        G23 = 2.632
+        Xt = 2.180
+        Xpo = 0.218  # estimate based on Maimi
+        Xc = 0.811
+        Yt = 0.131
+        Yc = 0.185
+        Sl = 0.122
+        St = 0.070
+        etaL = 0.5
         alpha0 = 53.0
-        G1Plus = 0.1
-        G1Minus = 0.1
-        G2Plus = 0.00075
-        G2Minus = 0.0025
-        G6 = 0.0035
+        GL1Plus = 0.1034  # Tan
+        GE1Plus = 0.0296  # Estimate from Tan and Maimi (same ratio)
+        G1Minus = 0.095  # Furtado
+        G2Plus = 0.00038
+        G6 = 0.00162
         density = 1.59e-06
 
-        mats.tapeElastic(self.model, E11, E22, E33, nu12, nu13, nu23, G12, G13,
-                         G23, density)
-        mats.tapeDamage(self.model, E11, E22, E33, nu12, nu13, nu23, G12, G13,
-                        G23, density, Xt, Xc, Yt, Yc, Sl, alpha0, G1Plus,
-                        G1Minus, G2Plus, G2Minus, G6)
-        mats.undulationDamage(self.model, E11, E22, E33, nu12, nu13, nu23, G12,
-                              G13, G23, density, Xt, Xc, Yt, Yc, Sl, alpha0,
-                              G1Plus, G1Minus, G2Plus, G2Minus, G6,
-                              self.t_angles, self.t_thickness, self.u_width)
-        mats.undulationElastic(self.model, E11, E22, E33, nu12, nu13, nu23,
-                               G12, G13, G23, density, self.t_angles,
-                               self.t_thickness, self.u_width)
-        mats.undulationDamageResin(self.model, E11, E22, E33, nu12, nu13, nu23,
-                                   G12, G13, G23, density, Xt, Xc, Yt, Yc, Sl,
-                                   alpha0, G1Plus, G1Minus, G2Plus, G2Minus,
-                                   G6, self.t_angles, self.t_thickness,
-                                   self.u_width)
-        mats.undulationElasticResin(self.model, E11, E22, E33, nu12, nu13,
-                                    nu23, G12, G13, G23, density,
-                                    self.t_angles, self.t_thickness,
-                                    self.u_width)
-        mats.resinElastic(self.model)
+        mats.tape_elastic(
+            self.model, E11, E22, E33, nu12, nu13, nu23, G12, G13, G23,
+            density)
+        mats.tape_damage(
+            self.model, E11, E22, E33, nu12, nu13, nu23, G12, G13, G23, Xt,
+            Xpo, Xc, Yt, Yc, Sl, St, alpha0, etaL, GL1Plus, GE1Plus, G1Minus,
+            G2Plus, G6, density)
+        mats.undulation_damage(
+            self.model, E11, E22, E33, nu12, nu13, nu23, G12, G13, G23, Xt,
+            Xpo, Xc, Yt, Yc, Sl, St, alpha0, etaL, GL1Plus, GE1Plus, G1Minus,
+            G2Plus, G6, density, self.t_angles, self.t_thickness, self.u_width)
+        mats.undulation_elastic(
+            self.model, E11, E22, E33, nu12, nu13, nu23, G12, G13, G23,
+            density, self.t_angles, self.t_thickness, self.u_width)
+        mats.resin_elastic(
+            self.model, E11, E22, E33, nu12, nu13, nu23, G12, G13, G23,
+            density)
+        mats.create_interaction_properties(
+            self.model, E33, G12, G2Plus, G6, self.mesh_size, self.t_thickness)
 
     def create_tape_paths(self, specimen_size):
         '''
@@ -117,11 +118,16 @@ class InterlacedModel(AbaqusModel):
                 tape/undulation objects.
         '''
         self.specimen_size = specimen_size
-        tape_paths, part_grid = tp.laminate_creation(
+        x, y = zip(*self.specimen_size.exterior.coords)
+        self.x_max = max(x)  # determine max x-value
+        self.y_max = max(y)
+        self.x_min = min(x)
+        self.y_min = min(y)
+        tape_paths, tape_angles, part_grid = tp.laminate_creation(
             tape_angles=self.t_angles, tape_widths=self.t_widths,
             tape_spacing=self.t_spacing, specimen_size=specimen_size,
             undulation_width=self.u_width)
-        return tape_paths, part_grid
+        return tape_paths, tape_angles, part_grid
 
     def get_faces_by_bounding_box(self, bounding_box):
         '''
@@ -137,8 +143,8 @@ class InterlacedModel(AbaqusModel):
         '''
         x1, y1, z1, x2, y2, z2 = bounding_box
         faces = [inst.faces.getByBoundingBox(x1, y1, z1, x2, y2, z2)
-                 for inst in self.assembly.instances.values()
-                 if inst.faces.getByBoundingBox(x1, y1, z1, x2, y2, z2)]
+                    for inst in self.assembly.instances.values()
+                    if inst.faces.getByBoundingBox(x1, y1, z1, x2, y2, z2)]
         return faces
 
     def get_edges_by_bounding_box(self, bounding_box):
@@ -181,11 +187,11 @@ class InterlacedModel(AbaqusModel):
 if __name__ == '__main__':
     # Material parameters
     tape_angles = (0, 90)  # define angles of tapes
-    tape_widths = 15.0
-    tape_spacing = 1  # number of gaps between tapes in interlacing pattern
+    tape_widths = 10.0
+    tape_spacing = 3  # number of gaps between tapes in interlacing pattern
     cured_ply_thickness = 0.18  # cured ply thickness e.g. 0.18125
     undulation_ratio = 0.09  # ratio of undulation amplitude to length
-    number_of_plies = 4  # symmetric 8 ply laminate
+    number_of_plies = 4  # symmetric 4 ply laminate
 
     # RVE dimensions
     x_min = y_min = -(tape_widths / 2.0)
@@ -198,10 +204,11 @@ if __name__ == '__main__':
     # Create model
     mdl = InterlacedModel('TestModel')
     mdl.time = 1.0  # set time attribute for testing purposes
+    mdl.mesh_size = 0.5  # set mesh size for testing purposes
     mdl.set_specimen_parameters(tape_angles, tape_widths, tape_spacing,
                                 cured_ply_thickness, undulation_ratio,
                                 number_of_plies)
     mdl.create_materials()
-    paths_f, grid_f = mdl.create_tape_paths(specimen_size)
+    paths_f, angles_f, grid_f = mdl.create_tape_paths(specimen_size)
     mdl.create_job()
     mdl.save_model()

@@ -6,13 +6,13 @@ sigc and tape_placement modules.
 (c) Rutger Kok, 23/11/2020
 '''
 
-from itertools import permutations
-import numpy as np
+from itertools import groupby
 from shapely.geometry import Polygon
-from shapely.ops import cascaded_union
+from matplotlib.patches import Polygon as matplotlibPolygon
+import matplotlib.pyplot as plt
 
 
-def object_plot(grid, angles, object_type, specimen=None):
+def object_plot(grid, specimen=None):
     '''
     Function to plot the contours of different Polygon types (Tape, Resin,
     Undulation) for debugging of tape_placement, and sigc scripts.
@@ -28,52 +28,39 @@ def object_plot(grid, angles, object_type, specimen=None):
     Returns:
         None
     '''
-    import matplotlib.pyplot as plt
     # define specimen boundaries
     if specimen is None:
         specimen = Polygon(
-                         [(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1),
-                          (-50.0, 75.1)])
+            [(-50.0, -75.1), (50.0, -75.1), (50.0, 75.1), (-50.0, 75.1)])
 
     f1, axes = plt.subplots(2, 2, sharex='col', sharey='row')
-    f1.suptitle('{} per Layer'.format(object_type))
-    angle_sets = []
-    for r in range(0, 3):
-        temp = permutations(angles, r)
-        for angle_combinations in temp:
-            angle_sets.append(list(angle_combinations))
-
+    colors = {'Undulation': 'red', 'Resin': 'blue', 'Tape': 'green'}
     g = 1
     for i in range(2):
         for j in range(2):
             if g <= len(grid):
-                tapes_in_layer = [tape for (m, tape)
-                                  in grid[g].iteritems()
-                                  if tape.object_type == object_type]
-                merged = []
-                for angle_set in angle_sets:
-                    same_angle = [tape for tape
-                                  in tapes_in_layer
-                                  if list(tape.angle) == angle_set]
-                    merged.append((cascaded_union(same_angle), angle_set))
-                for angle_set_2, angle in merged:
-                    if angle_set_2.geom_type == 'Polygon':
-                        xi, yi = angle_set_2.exterior.xy
-                        axes[i, j].plot(xi, yi)
-                        axes[i, j].text(xi[0], yi[0], angle)
-                        axes[i, j].set_title('Layer: {}'.format(g))
-                    elif angle_set_2.geom_type == 'MultiPolygon':
-                        for t in angle_set_2:
-                            xi, yi = t.exterior.xy
-                            colour = np.random.rand(3,)
-                            axes[i, j].text(xi[0], yi[0], angle, color=colour)
-                            axes[i, j].plot(xi, yi, color=colour)
+                sorted_objects = sorted(
+                    grid[g].values(), key=lambda x: x.object_type)
+                groups = {key: list(v for v in valuesiter)
+                          for key, valuesiter
+                          in groupby(
+                              sorted_objects, key=lambda x: x.object_type)}
+                for object_type, objects in groups.iteritems():
+                    for poly in objects:
+                        vertices = poly.exterior.coords
+                        if object_type is None:
+                            patch = matplotlibPolygon(
+                                vertices, closed=True, edgecolor='black',
+                                fill=False)
+                        else:
+                            patch = matplotlibPolygon(
+                                vertices, closed=True, edgecolor='black',
+                                facecolor=colors[object_type], fill=True,
+                                alpha=0.75)
+                        axes[i, j].add_patch(patch)
+                axes[i, j].autoscale()
                 axes[i, j].set_title('Layer: {}'.format(g))
-                xb, yb = specimen.exterior.xy
-                axes[i, j].plot(xb, yb)
                 g += 1
             else:
                 break
-
-    plt.rcParams['axes.grid'] = True
     plt.show(f1)

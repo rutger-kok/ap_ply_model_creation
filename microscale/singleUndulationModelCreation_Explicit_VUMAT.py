@@ -177,11 +177,12 @@ def createUndulation(h_u, h_f, ratio, theta1, theta2):
 
     tapeMaterial = undulationModel.Material(name='Tape')
     tapeMaterial.Density(table=((1.59e-06, ), ))
-    tapeMaterial.Depvar(deleteVar=20, n=24)
+    tapeMaterial.Depvar(deleteVar=27, n=27)
     tapeMaterial.UserMaterial(
-        mechanicalConstants=(116.6, 7.7, 7.7, 0.3, 0.3, 0.3, 3.6, 3.6, 2.4,
-                             2.354, 1.102, 0.0343, 0.184, 0.0827, 53.0,
-                             0.1, 0.1, 0.0003, 0.0003, 0.008))
+        mechanicalConstants=(116.6, 7.231, 7.231, 0.339, 0.339, 0.374, 3.268,
+                             3.268, 2.632, 2.180, 0.2180, 0.811, 0.131, 0.185,
+                             0.122, 0.070, 53.0, 0.5, 0.08, 0.02, 0.1, 0.00038,
+                             0.00162))
 
     # ------------------------------------------------------------------------
     # Create sections to assign to the undulation

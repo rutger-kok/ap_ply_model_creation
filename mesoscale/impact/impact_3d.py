@@ -89,7 +89,6 @@ class DWTModel(ImpactModel):
                        y_max + tol, z_min + tol]
         side_4_faces = self.get_faces_by_bounding_box(side_4_bbox)
         all_sides = side_1_faces + side_2_faces + side_3_faces + side_4_faces
-        print all_sides
         tie_region_3d = self.assembly.Surface(
             side1Faces=all_sides, name='Tie Faces 3D')
         self.model.Tie(

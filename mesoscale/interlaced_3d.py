@@ -1,20 +1,22 @@
 '''
-This module can be used to create 3D models of interlaced laminates.
-The Interlaced3D class inherits from the InterlacedModel class. The child
-class contains methods to create parts, create cohesive interactions, mesh
-parts, and so forth.
+This module can be used to create 2D (shell) models of interlaced laminates.
+The Interlaced2D class inherits from the InterlacedModel class. The child
+class contains methods to create parts, partition them, and assign material
+properties to the partitioned regions.
 
-(c) Rutger Kok, 25/11/2020
+(c) Rutger Kok, 21/06/2021
 '''
-from abaqus import *
-from abaqusConstants import *
-from math import pi
-import mesh
-import regionToolset
 from sys import path
 path.append('C:\\Python27\\Lib\\site-packages')
-path.append('C:\\GitHub\\interlaced_model_creation\\mesoscale')
-from shapely.geometry import Polygon
+path.append('C:\\Github\\interlaced_model_creation\\mesoscale')
+from abaqus import *
+from abaqusConstants import *
+from caeModules import *
+import mesh
+import regionToolset
+from shapely.geometry import Polygon, Point, LineString
+from shapely.affinity import scale, rotate
+from math import cos, radians, tan
 from interlaced_model import InterlacedModel
 
 
@@ -22,202 +24,222 @@ class Interlaced3D(InterlacedModel):
     def __init__(self, model_name, dir_name=None):
         InterlacedModel.__init__(self, model_name, dir_name)
 
-    def create_3d_part(self, obj, object_id, sequence, damage=True,
-                       symmetric=False, mesh_size=1.0):
+    def partition_part(self, part, face=True):
         '''
-        This function is used to create Tape parts using geometric info from
-        Shapely.
+        Function to partition the part into a grid of polygons depending on the
+        tape angles of the laminate.
 
         Args:
-            obj (Shapely Polygon): Polygon defining the part dimensions.
-            object_id (int): Grid ID of Polygon object
-            sequence (): XXXXXXXX
-            damage (boolean): True if the simulation includes damage i.e. is
-                not purely elastic.
-            symmetric (boolean): False if model uses symmetric BC, True if
-                the full model is desired.
+            part (Abaqus Part Instance): part to be partitioned.
+            face (boolean): True if partitioning faces (2D parts), False if
+                partitioning cells.
 
         Returns:
             None
         '''
-        part_id = '{}-{}'.format(obj.layer, object_id)
-        x0, y0 = obj.exterior.xy
-        abaqus_coords = zip(x0, y0)
-        sketch = self.model.ConstrainedSketch(
-            name='Sketch {}'.format(part_id), sheetSize=200.0)
-        for idx in range(len(abaqus_coords) - 1):
-            sketch.Line(point1=(abaqus_coords[idx][0], abaqus_coords[idx][1]),
-                        point2=(abaqus_coords[idx + 1][0],
-                                abaqus_coords[idx + 1][1]))
-        # extrude profile to create part
-        part = self.model.Part(name='Part {}'.format(part_id),
-                               dimensionality=THREE_D, type=DEFORMABLE_BODY)
-        part.BaseSolidExtrude(sketch=sketch, depth=self.t_thickness)
-        cells = part.cells  # all cells within part (only 1 cell)
-        cell_region = regionToolset.Region(cells=cells[:])
-        if obj.object_type == 'Tape':
-            if damage:
-                section_name = 'Tape-Damage'
-            else:
-                section_name = 'Tape-Elastic'
-        elif obj.object_type == 'Undulation':
-            if len(obj.angle) == 1:
-                if damage:
-                    section_name = 'Undulation-Damage-Resin'
-                else:
-                    section_name = 'Undulation-Elastic-Resin'
-            else:
-                interface_angle = abs(obj.angle[0] - obj.angle[1])
-                section_angle = (0, interface_angle)
-                if damage:
-                    section_name = 'Undulation-Damage-{}'.format(section_angle)
-                else:
-                    section_name = 'Undulation-Elastic-{}'.format(
-                        section_angle)
-        else:
-            section_name = 'Resin-Elastic'
+        # define mirror point (used to mirror the Polygon boundaries)
+        mirror_point = Point([(0.0, 0.0), (0.0, 0.0)])
 
-        part.SectionAssignment(
-            region=cell_region, sectionName=section_name,
-            offsetType=MIDDLE_SURFACE, thicknessAssignment=FROM_SECTION,
-            offset=0.0, offsetField='')
-        part.MaterialOrientation(
-            region=cell_region, orientationType=SYSTEM, stackDirection=STACK_3,
-            angle=obj.angle[-1], additionalRotationType=ROTATION_ANGLE,
-            axis=AXIS_3, fieldName='', additionalRotationField='',
-            localCsys=None)
+        x, y = zip(*self.specimen_size.exterior.coords)
+        x_max = max(x)  # determine max x-value for offsets
+        y_max = max(y)
 
+        partition_lines = []
+        uw = self.u_width
+        for a, w in zip(self.t_angles, self.t_widths):
+            if a == 90:
+                offset = w
+                max_offset = x_max - w / 2.0
+                number_offsets = int(max_offset / offset)
+                offset_list = [offset * k for k in range(number_offsets + 1)]
+                for ofs in offset_list:
+                    line_1_coords = [((w / 2.0) - uw + ofs, 100.0),
+                                     ((w / 2.0) - uw + ofs, -100.0)]
+                    line_2_coords = [((w / 2.0) + ofs, 100.0),
+                                     ((w / 2.0) + ofs, -100.0)]
+                    line_3_coords = [((w / 2.0) + ofs + uw, 100.0),
+                                     ((w / 2.0) + ofs + uw, -100.0)]
+                    line_1 = LineString(line_1_coords)
+                    line_2 = LineString(line_2_coords)
+                    line_3 = LineString(line_3_coords)
+                    partition_lines.extend([line_1, line_2, line_3])
+                reflected_lines = [scale(line, xfact=-1, origin=mirror_point)
+                                   for line in partition_lines]
+                partition_lines = partition_lines + reflected_lines
+
+            else:
+                offset = w / cos(radians(a))
+                max_offset = (y_max - (w / 2.0) * cos(radians(a))
+                              + x_max * tan(radians(a)))
+                number_offsets = int(max_offset / offset)
+                offset_list = [offset * k for k in range(number_offsets + 20)]
+                for ofs in offset_list:
+                    line_1_coords = [(-100.0, (w / 2.0) - uw + ofs),
+                                     (100.0, (w / 2.0) - uw + ofs)]
+                    line_2_coords = [(-100.0, (w / 2.0) + ofs),
+                                     (100.0, (w / 2.0) + ofs)]
+                    line_3_coords = [(-100.0, (w / 2.0) + ofs + uw),
+                                     (100.0, (w / 2.0) + ofs + uw)]
+                    rotation_point = Point([(0.0, ofs), (0.0, ofs)])
+                    line_1 = rotate(
+                        LineString(line_1_coords), a, rotation_point)
+                    line_2 = rotate(
+                        LineString(line_2_coords), a, rotation_point)
+                    line_3 = rotate(
+                        LineString(line_3_coords), a, rotation_point)
+                    partition_lines.extend([line_1, line_2, line_3])
+                reflected_lines = [rotate(line, 180.0, origin=mirror_point)
+                                   for line in partition_lines]
+                partition_lines = partition_lines + reflected_lines
+
+        for line in partition_lines:
+            line_coords = [list(tup) + [0.0] for tup in list(line.coords)]
+            last_coord = [[line_coords[-1][0], line_coords[-1][1], 1.0]]
+            line_coords_3d = line_coords + last_coord
+            datum_point_ids = []
+            for coordinates in line_coords_3d:
+                datum_point_ids.append(
+                    part.DatumPointByCoordinate(
+                        coords=coordinates).id)
+            datum_point_1 = part.datums[datum_point_ids[0]]
+            datum_point_2 = part.datums[datum_point_ids[1]]
+            datum_point_3 = part.datums[datum_point_ids[2]]
+            datum_plane = part.DatumPlaneByThreePoints(
+                point1=datum_point_1, point2=datum_point_2,
+                point3=datum_point_3).id
+            try:
+                if face:
+                    part.PartitionFaceByDatumPlane(
+                        datumPlane=part.datums[datum_plane],
+                        faces=part.faces)
+                else:
+                    part.PartitionCellByDatumPlane(
+                        datumPlane=part.datums[datum_plane],
+                        cells=part.cells)
+            except:
+                # bare except to catch feature creation error which occurs
+                # when the partitioning plane does not intercept the part
+                 continue
+
+    def partition_through_thickness(self):
+        for n in range(1, self.l_plies):
+            datum_plane_id = self.specimen_part.DatumPlaneByPrincipalPlane(
+                principalPlane=XYPLANE, offset=self.t_thickness * n).id
+            self.specimen_part.PartitionCellByDatumPlane(
+                datumPlane=self.specimen_part.datums[datum_plane_id],
+                cells=self.specimen_part.cells)
+
+    def create_part(self, x_min, y_min, x_max, y_max, part_grid):
+        '''
+        Function to create a 3d rectangular specimen part.
+
+        Args:
+            x_min (float): minimum x-coordinate of the specimen.
+            x_max (float): maximum x-coordinate of the specimen.
+            y_min (float): minimum y-coordinate of the specimen.
+            y_max (float): maximum y-coordinate of the specimen.
+            part_grid (dict): grid dictionary that defines the properties of
+                the interlaced regions.
+
+        Returns:
+            None
+        '''
+        part_sketch = self.model.ConstrainedSketch(
+            name='Part Sketch', sheetSize=200.0)
+        part_sketch.rectangle(point1=(x_min, y_min), point2=(x_max, y_max))
+        self.specimen_part = self.model.Part(
+            name='Specimen', dimensionality=THREE_D, type=DEFORMABLE_BODY)
+        self.specimen_part.BaseSolidExtrude(
+            sketch=part_sketch, depth=self.l_thickness)
+        self.specimen_faces = self.specimen_part.faces
+        self.assembly.Instance(
+            name='Specimen Instance', part=self.specimen_part, dependent=ON)
+        # partition the part into subregions
+        self.partition_part(self.specimen_part, face=False)
+        # parition the part into plies through the thickness
+        self.partition_through_thickness()
+        # assign properties to each of the regions
+        self.assign_properties(part_grid)
         # mesh the part
-        self.mesh_part_3d(part, mesh_size)
+        # self.mesh_part_3d(self.specimen_part, self.mesh_size)
 
-        # create the part instance
-        instance_name = 'Instance3D-{}-{}'.format(sequence, part_id)
-        sequence_offset = sequence * self.t_thickness * len(self.t_angles)
-        z_offset = sequence_offset + (obj.layer - 1) * self.t_thickness
-        self.assembly.Instance(name=instance_name, part=part, dependent=ON)
-        self.assembly.translate(instanceList=(instance_name, ),
-                                vector=(0.0, 0.0, z_offset))
-        if symmetric:
-            # create the symmetric part instance
-            self.assembly.Instance(name='Mirror-' + instance_name, part=part,
-                                   dependent=ON)
-            translate_vector = (
-                0.0, 0.0, self.l_thickness - z_offset - self.t_thickness)
-            self.assembly.translate(
-                instanceList=('Mirror-' + instance_name, ),
-                vector=translate_vector)
+    def assign_properties(self, grid):
+        '''
+        Function to assign material properties to the partitioned specimen.
+
+        Args:
+            part (Abaqus Part Instance): part for property assignment.
+            part_grid (dict): Nested dictionary defining the grid of
+                tape/undulation objects.
+
+        Returns:
+            None
+
+        TODO:
+            Change property assignment to assign to all regions of the same
+                type at once (reducing the number of composite layups)
+        '''
+        cells = self.specimen_part.cells
+        if self.damage_mode == 'ON':
+            mat_type = 'Damage'
+        else:
+            mat_type = 'Elastic'
+        region_dict = {}
+        orient_dict = {}
+        for obj_id, obj in grid.iteritems():
             obj_centroid = obj.centroid.coords
-            rot_point = (
-                obj_centroid[0][0], obj_centroid[0][1],
-                (self.l_thickness - z_offset) - self.t_thickness / 2.0)
-            self.assembly.rotate(
-                instanceList=('Mirror-' + instance_name, ), angle=180.0,
-                axisPoint=rot_point, axisDirection=(1.0, 0.0, 0.0))
+            for n in range(1, len(self.t_angles) + 1):
+                region_coords = (
+                    obj_centroid[0][0], obj_centroid[0][1],
+                    self.t_thickness * (2 * n - 1) / 2.0)
+                obj_type = obj.object_type[n - 1]
+                # check object type and assign properties accordingly
+                if obj_type == 'Tape':
+                    section_name = 'Tape-{}'.format(mat_type)
+                    mat_orient = obj.angle[n - 1]
+                elif obj_type == 'Resin':
+                    mat_orient = obj.angle[n - 1]
+                    section_name = 'Resin-Tape-Elastic'  # always elastic
+                elif obj_type == 'Undulation':
+                    mat_orient = obj.angle[n - 1]
+                    section_name = 'Undulation-{}-(0, Resin)'.format(mat_type)
+                # if region key does not exist in dictionary create it, else
+                # append the centroid of the new region to the dictionary entry
+                region_dict.setdefault(section_name, []).append(region_coords)
+                orient_dict.setdefault(mat_orient, []).append(region_coords)
 
-    def merge_3d_tapes(self, part_grid, tape_paths, mesh_size,
-                       symmetric=False):
-        '''
-        This method iterates over all the tape_paths in a laminate and calls
-        merge_instances to combine the separate parts into a single tape.
+        for name, regions in region_dict.iteritems():
+            for i, centroid in enumerate(regions):
+                if i == 0:
+                    selected_cells = cells.findAt((centroid, ))
+                else:
+                    selected_cells += cells.findAt((centroid, ))
+            # assign section to region
+            region = self.specimen_part.Set(
+                cells=selected_cells, name='{}-Cells'.format(name))
+            self.specimen_part.SectionAssignment(
+                region=region, sectionName=name, offsetType=MIDDLE_SURFACE,
+                offset=0.0, offsetField='', thicknessAssignment=FROM_SECTION)
 
-        Args:
-            part_grid (dict): Nested dictionary defining the grid of
-                tape/undulation objects.
-            tape_paths (list): Nested list containing the connectivity of
-                each object in each tape path.
-            symmetric (boolean): False if model uses symmetric BC, True if
-                the full model is desired.
-
-        Returns:
-            None
-        '''
-        if symmetric:
-            for mirrored_part in (True, False):  # must merge mirrored parts
-                for sequence in range(self.sequences):
-                    for (path_number, tape_path) in enumerate(tape_paths):
-                        self.merge_instances(
-                            part_grid, path_number, tape_path, sequence,
-                            mesh_size, mirrored=mirrored_part)
-        else:
-            for sequence in range(self.sequences):
-                    for (path_number, tape_path) in enumerate(tape_paths):
-                        self.merge_instances(
-                            part_grid, path_number, tape_path, sequence,
-                            mesh_size)
-
-    def create_laminate_parts(self, part_grid, tape_paths, mesh_size,
-                              symmetric=False):
-        '''
-        This method iterates over the part_grid dictionary and calls the
-        create_3d_part method to generate parts of a laminate, one "layer" at
-        a time.
-
-        Args:
-            part_grid (dict): Nested dictionary defining the grid of
-                tape/undulation objects.
-
-        Returns:
-            None
-        '''
-        for sequence in range(self.sequences):
-            for layer_number in range(1, len(part_grid) + 1):
-                for obj_id, obj in part_grid[layer_number].iteritems():
-                    self.create_3d_part(
-                        obj, obj_id, sequence, mesh_size=mesh_size)
-        self.merge_3d_tapes(part_grid, tape_paths, mesh_size, symmetric)
-
-    def merge_instances(self, part_grid, path_number, tape_path, sequence,
-                        mesh_size, mirrored=False):
-        '''
-        This method merges instances in the same tape path (i.e. all the
-        Polygon objects that make up a single tape).
-
-        Args:
-            part_grid (dict): Nested dictionary defining the grid of
-                tape/undulation objects.
-            path_number (int): Number of the tape path within the current
-                sequence.
-            tape_path (list): List containing the connectivity of
-                each object in the tape path.
-            sequence (int): Number identifying the number repetitions of the
-                interlacing pattern.
-            mirrored (boolean): True if merging mirrored parts.
-
-        Returns:
-            None
-        '''
-        if mirrored:
-            search_string = 'Mirror-Instance3D-{}-'.format(sequence)
-        else:
-            search_string = 'Instance3D-{}-'.format(sequence)
-
-        if len(tape_path) > 1:
-            layer, grid_id = tape_path[0].split('-')
-            path_angle = part_grid[int(layer)][int(grid_id)].angle[-1]
-            instance_list = [self.assembly.instances[search_string + str(inst)]
-                             for inst in tape_path]
-            if mirrored:
-                instance_name = 'Mirror-Pass3D-{}-{}'.format(
-                    sequence, path_number)
-            else:
-                instance_name = 'Pass-3D-{}-{}'.format(sequence, path_number)
-            self.assembly.InstanceFromBooleanMerge(
-                name=instance_name, instances=instance_list, domain=BOTH,
-                keepIntersections=ON, originalInstances=DELETE, mergeNodes=ALL,
-                nodeMergingTolerance=1e-06)
-            pass_part = self.model.parts[instance_name]
-            pass_region = regionToolset.Region(cells=pass_part.cells[:])
-            pass_part.MaterialOrientation(
-                region=pass_region, orientationType=SYSTEM, axis=AXIS_3,
-                localCsys=None, fieldName='', stackDirection=STACK_3,
-                additionalRotationType=ROTATION_ANGLE, angle=path_angle,
-                additionalRotationField='')
-            self.mesh_part_3d(pass_part, mesh_size)
+        for orientation, regions in orient_dict.iteritems():
+            for i, centroid in enumerate(regions):
+                if i == 0:
+                    selected_cells = cells.findAt((centroid, ))
+                else:
+                    selected_cells += cells.findAt((centroid, ))
+            # assign orientation to region
+            region = self.specimen_part.Set(
+                cells=selected_cells, name='Cells-{}'.format(int(orientation)))
+            self.specimen_part.MaterialOrientation(
+                region=region, orientationType=SYSTEM, localCsys=None,
+                stackDirection=STACK_3, additionalRotationField='',
+                angle=orientation, additionalRotationType=ROTATION_ANGLE,
+                axis=AXIS_3, fieldName='')
 
     def mesh_part_3d(self, part, mesh_size):
         '''
-        Function to mesh a part using reduced order C3D8R elements (with
-        enhanced hourglass control)
+        Function to mesh a part using reduced order C3D8R elements with
+        enhanced hourglass control and distortion control.
 
         Args:
             part (Abaqus Part Instance): the part to be meshed.
@@ -226,135 +248,55 @@ class Interlaced3D(InterlacedModel):
         Returns:
             None
         '''
+        if self.damage_mode == 'ON':
+            element_library = STANDARD
+        else:
+            element_library = EXPLICIT
         elem_type_1 = mesh.ElemType(
-            elemCode=C3D8R, elemLibrary=EXPLICIT, distortionControl=DEFAULT,
+            elemCode=C3D8R, elemLibrary=element_library, lengthRatio=0.1,
             kinematicSplit=AVERAGE_STRAIN, secondOrderAccuracy=OFF,
-            hourglassControl=ENHANCED)
-        elem_type_2 = mesh.ElemType(elemCode=C3D6, elemLibrary=EXPLICIT)
-        elem_type_3 = mesh.ElemType(elemCode=C3D4, elemLibrary=EXPLICIT)
-
+            hourglassControl=ENHANCED, distortionControl=ON)
+        elem_type_2 = mesh.ElemType(elemCode=C3D6, elemLibrary=element_library)
+        elem_type_3 = mesh.ElemType(elemCode=C3D4, elemLibrary=element_library)
         part_cells = part.Set(
             cells=part.cells[:], name='{} Cells'.format(part.name))
         part.setElementType(
             regions=part_cells,
             elemTypes=(elem_type_1, elem_type_2, elem_type_3))
-        part.seedPart(size=mesh_size, deviationFactor=0.1,
-                      minSizeFactor=0.1)
+        part.seedPart(
+            size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
         part.generateMesh()
-
-    def create_interaction_properties(self, mesh_size):
-        '''
-        This method creates cohesive interaction properties.
-
-        Args:
-            mesh_size (float): size of elements in FE mesh.
-
-        Returns:
-            None
-        '''
-        alpha = 50  # from Turon (2007)
-        E_33 = 11.6
-        G_12 = 6.47
-        GIc = 300.0e-6
-        GIIc = 800.0e-6
-        Ne = 5
-
-        # calculate cohesive zone properties according to Turon (2007)
-        K1 = (alpha * E_33) / self.t_thickness
-        K2 = (alpha * G_12) / self.t_thickness
-        tau1 = ((9 * pi * E_33 * GIc) / (32 * Ne * mesh_size))**0.5
-        tau2 = ((9 * pi * E_33 * GIIc) / (32 * Ne * mesh_size))**0.5
-
-        self.model.ContactProperty('Tangential')
-        self.model.interactionProperties['Tangential'].TangentialBehavior(
-            formulation=PENALTY, directionality=ISOTROPIC,
-            slipRateDependency=OFF, pressureDependency=OFF,
-            temperatureDependency=OFF, dependencies=0, table=((0.15, ), ),
-            shearStressLimit=None, maximumElasticSlip=FRACTION, fraction=0.005,
-            elasticSlipStiffness=None)
-        self.model.interactionProperties['Tangential'].NormalBehavior(
-            pressureOverclosure=HARD, allowSeparation=ON,
-            constraintEnforcementMethod=DEFAULT)
-        self.model.ContactProperty('Cohesive')
-        self.model.interactionProperties['Cohesive'].CohesiveBehavior(
-            defaultPenalties=OFF, table=((K1, K2, K2), ))
-        self.model.interactionProperties['Cohesive'].Damage(
-            criterion=QUAD_TRACTION, initTable=((tau1, tau2, tau2), ),
-            useEvolution=ON, evolutionType=ENERGY, useMixedMode=ON,
-            mixedModeType=BK, exponent=1.75, evolTable=((GIc, GIIc, GIIc), ))
-
-    def create_interactions_explicit(self):
-        '''
-        This method creates cohesive interactions between all instances in an
-        assembly. It uses the built-in "contactDetection" method to determine
-        contacts between instances, then iterates over the identified contacts
-        and adds them to a General Contact definition. This is required for
-        cohesive contacts to work in Abaqus Explicit.
-
-        Args:
-            None
-
-        Returns:
-            None
-        '''
-        # determine contacts
-        self.model.contactDetection(
-            defaultType=CONTACT, interactionProperty='Cohesive',
-            nameEachSurfaceFound=OFF, createUnionOfMasterSurfaces=ON,
-            createUnionOfSlaveSurfaces=ON, searchDomain=MODEL,
-            separationTolerance=0.0001)
-        # create explicit general contact definition
-        self.model.ContactExp(name='GC', createStepName='Initial')
-        general_contact = self.model.interactions['GC']
-        general_contact.includedPairs.setValuesInStep(
-            stepName='Initial', useAllstar=ON)
-        # define 'Tangential' as default behaviour
-        general_contact.contactPropertyAssignments.appendInStep(
-            stepName='Initial', assignments=((GLOBAL, SELF, 'Tangential'), ))
-        # assign cohesive behaviour to contacting tape surfaces
-        for interaction in self.model.interactions.values():
-            if interaction.name == 'GC':
-                continue
-            else:
-                master_name = interaction.master[0]
-                slave_name = interaction.slave[0]
-                master_surface = self.assembly.surfaces[master_name]
-                slave_surface = self.assembly.surfaces[slave_name]
-                general_contact.contactPropertyAssignments.appendInStep(
-                    stepName='Initial',
-                    assignments=((master_surface, slave_surface, 'Cohesive'), ))
-                del self.model.interactions['{}'.format(interaction.name)]
 
 
 if __name__ == '__main__':
-
     # Material parameters
     tape_angles = (0, 90)  # define angles of tapes
     tape_widths = 10.0
-    tape_spacing = 1  # number of gaps between tapes in interlacing pattern
+    tape_spacing = 3  # number of gaps between tapes in interlacing pattern
     cured_ply_thickness = 0.18  # cured ply thickness e.g. 0.18125
     undulation_ratio = 0.09  # ratio of undulation amplitude to length
-    number_of_plies = 4  # symmetric 8 ply laminate
-    mesh_size = 1.0
+    number_of_plies = 2  # symmetric 8 ply laminate
+
+    # Simulation parameters
+    damage_mode = 'OFF'
 
     # RVE dimensions
-    x_min = y_min = -(tape_widths / 2.0)
-    x_max = y_max = x_min + (tape_spacing + 1) * (tape_widths)
-    y_min = -25.0
-    y_max = 25.0
+    x_min = -50.0
+    x_max = 50.0
+    y_min = -75.0
+    y_max = 75.0
     specimen_size = Polygon([(x_min, y_min), (x_max, y_min), (x_max, y_max),
                              (x_min, y_max)])
 
     # Create model
     mdl = Interlaced3D('TestModel')
-    mdl.time = 1.0  # set time attribute for testing purposes
+    mdl.damage_mode = damage_mode
     mdl.set_specimen_parameters(tape_angles, tape_widths, tape_spacing,
                                 cured_ply_thickness, undulation_ratio,
                                 number_of_plies)
     mdl.create_materials()
-    paths_f, grid_f = mdl.create_tape_paths(specimen_size)
-    mdl.create_laminate_parts(grid_f, paths_f, )
-    mdl.create_interaction_properties(mesh_size)
-    mdl.create_interactions_explicit()
+    mdl.mesh_size = 0.5  # set mesh size for testing purposes
+    paths_f, angles_f, grid_f = mdl.create_tape_paths(specimen_size)
+    mdl.create_part(x_min, y_min, x_max, y_max, grid_f)
     mdl.create_job()
     mdl.save_model()

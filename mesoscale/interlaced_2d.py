@@ -111,13 +111,13 @@ class Interlaced2D(InterlacedModel):
                 if face:
                     part.PartitionFaceByDatumPlane(
                         datumPlane=part.datums[datum_plane],
-                        faces=self.specimen_faces)
+                        faces=part.faces)
                 else:
                     part.PartitionCellByDatumPlane(
                         datumPlane=part.datums[datum_plane],
                         cells=part.cells)
             except:
-                continue
+                 continue
 
     def create_part(self, x_min, y_min, x_max, y_max, part_grid):
         '''
@@ -206,66 +206,6 @@ class Interlaced2D(InterlacedModel):
                     orientationValue=obj_angle, additionalRotationField='',
                     additionalRotationType=ROTATION_NONE, numIntPoints=3,
                     axis=AXIS_3)
-
-        # # find all combinations of angles in a layer
-        # for layer_id, layer_grid in part_grid.iteritems():
-        #     angle_sets = set()
-        #     for obj_id, obj in layer_grid.iteritems():
-        #         angle_sets.add(tuple(obj.angle))
-
-        #     # find faces with the same angle
-        #     for i, angle in enumerate(angle_sets):
-        #         obj_by_angle = [obj for obj in layer_grid.values()
-        #                         if tuple(obj.angle) == angle]
-        #         # now split regions with same angle into lists by object type
-        #         object_types = ('Tape', 'Resin', 'Undulation')
-        #         obj_by_type = {
-        #             region_type: [obj.centroid.coords for obj in obj_by_angle
-        #                           if obj.object_type == region_type]
-        #             for region_type in object_types}
-        #         # iterate over sorted objects to assign properties
-        #         for region_type, centroids in obj_by_type.iteritems():
-        #             if region_type == 'Tape':
-        #                 section_name = 'Tape-Elastic'
-        #             elif region_type == 'Undulation':
-        #                 if len(angle) == 1:
-        #                     section_name = 'Undulation-Elastic-Resin'
-        #                 else:
-        #                     interface_angle = abs(angle[0] - angle[1])
-        #                     section_angle = (0, interface_angle)
-        #                     section_name = 'Undulation-Elastic-{}'.format(
-        #                         section_angle)
-        #             else:
-        #                 section_name = 'Resin-Elastic'
-        #             if centroids:
-        #                 selected_faces = self.specimen_faces.findAt(
-        #                     ((centroids[0][0][0], centroids[0][0][1], 0.0), ))
-        #                 for n in range(1, len(centroids)):
-        #                     selected_faces += self.specimen_faces.findAt(
-        #                         ((centroids[n][0][0], centroids[n][0][1], 0.0), ))
-        #                 region = regionToolset.Region(faces=selected_faces)
-        #                 composite_layup = self.specimen_part.CompositeLayup(
-        #                     name='CompositeLayup-{}'.format(i), description='',
-        #                     elementType=SHELL, offsetType=MIDDLE_SURFACE,
-        #                     symmetric=False, thicknessAssignment=FROM_SECTION)
-        #                 composite_layup.Section(
-        #                     preIntegrate=OFF, integrationRule=SIMPSON,
-        #                     thicknessType=UNIFORM, poissonDefinition=DEFAULT,
-        #                     temperature=GRADIENT, useDensity=OFF)
-        #                 composite_layup.ReferenceOrientation(
-        #                     orientationType=GLOBAL, fieldName='', angle=0.0,
-        #                     axis=AXIS_3, additionalRotationType=ROTATION_NONE,
-        #                     localCsys=None)
-        #                 for j in range(self.sequences):
-        #                     name_of_ply = 'Ply-{}-{}'.format(j, layer_id)
-        #                     composite_layup.CompositePly(
-        #                         region=region, material=section_name,
-        #                         thicknessType=SPECIFY_THICKNESS, numIntPoints=3,
-        #                         thickness=self.t_thickness, suppressed=False,
-        #                         orientationType=SPECIFY_ORIENT, angle=0.0,
-        #                         orientationValue=0.0, plyName=name_of_ply,
-        #                         additionalRotationType=ROTATION_NONE, axis=AXIS_3,
-        #                         additionalRotationField='')
 
     def mesh_part_2d(self, part, mesh_size):
         '''

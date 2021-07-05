@@ -34,7 +34,7 @@ def laminate_creation(tape_angles, tape_widths, tape_spacing, specimen_size,
             interlaced laminate.
 
     Returns:
-        paths (list): List of tape/tow connectivity for a tape.
+        pass_paths (list): List of tape/tow connectivity for a tape.
         trimmed_grid (dict): Nested dictionary defining the grid of
             tape/undulation objects.
     """
@@ -42,12 +42,14 @@ def laminate_creation(tape_angles, tape_widths, tape_spacing, specimen_size,
     # create interlaced laminate instance
     laminate = sigc.Interlaced(tape_angles, tape_widths, undulation_width,
                                specimen=specimen_size)
+    specimen_buffered = specimen_size.buffer(2.5, join_style=2)
+    x, y = zip(*specimen_buffered.exterior.coords)
+    x_max = max(x) + 2.0 * max(tape_widths)  # determine max x-value for offset
+    y_max = max(y) + 2.0 * max(tape_widths)
+    d_max = (x_max**2.0 + y_max**2.0)**0.5
 
-    x, y = zip(*specimen_size.exterior.coords)
-    x_max = max(x)  # determine max x-value for offsets
-    y_max = max(y)
-
-    paths = []
+    pass_paths = []
+    pass_angles = []
     tape_props = zip(tape_angles, tape_widths)
     s = tape_spacing  # reassign tape_spacing for brevity
     uw = undulation_width  # reassign undulation_width for brevity
@@ -64,33 +66,39 @@ def laminate_creation(tape_angles, tape_widths, tape_spacing, specimen_size,
                                         number_offsets - shift_number + 10)]
                 shift = shift_number * offset  # offset from starting point
                 for ofs in offset_list:
-                    tape_coords = ([(-500.0 + ofs + shift, (w / 2.0) - uw),
-                                   (500.0 + ofs + shift, (w / 2.0) - uw),
-                                   (500.0 + ofs + shift, (-w / 2.0) + uw),
-                                   (-500.0 + ofs + shift, (-w / 2.0) + uw)])
-                    created_tape = laminate.make_pass(pass_coords=tape_coords,
-                                                      pass_angle=90)
-                    paths.append(created_tape)
+                    tape_coords = ([(-d_max + ofs + shift, (w / 2.0) - uw),
+                                   (d_max + ofs + shift, (w / 2.0) - uw),
+                                   (d_max + ofs + shift, (-w / 2.0) + uw),
+                                   (-d_max + ofs + shift, (-w / 2.0) + uw)])
+                    pass_path, pass_angle = laminate.make_pass(
+                        pass_coords=tape_coords, pass_angle=a)
+                    pass_paths.append(pass_path)
+                    pass_angles.append(pass_angle)
             else:  # for tape/tow placement angles other than 90
                 offset = w / cos(radians(a))
                 spaced_offset = ((1 + s) * w) / cos(radians(a))
                 max_offset = ((y_max + w / 2.0) * cos(radians(a))
-                              +  x_max * tan(radians(a)))
+                              + x_max * tan(radians(a)))
                 number_offsets = int(max_offset / spaced_offset)
                 offset_list = [spaced_offset * k for k
                                in range(-number_offsets - shift_number - 10,
                                         number_offsets - shift_number + 10)]
                 shift = shift_number * offset
                 for ofs in offset_list:
-                    tape_coords = ([(-500.0, ((w / 2.0) - uw) + ofs + shift),
-                                   (500.0, ((w / 2.0) - uw) + ofs + shift),
-                                   (500.0, ((-w / 2.0) + uw) + ofs + shift),
-                                   (-500.0, ((-w / 2.0) + uw) + ofs + shift)])
-                    created_tape = laminate.make_pass(pass_coords=tape_coords,
-                                                      pass_angle=a)
-                    paths.append(created_tape)
-    trimmed_grid = laminate.trim_to_specimen()
-    return paths, trimmed_grid
+                    tape_coords = ([(-d_max, ((w / 2.0) - uw) + ofs + shift),
+                                   (d_max, ((w / 2.0) - uw) + ofs + shift),
+                                   (d_max, ((-w / 2.0) + uw) + ofs + shift),
+                                   (-d_max, ((-w / 2.0) + uw) + ofs + shift)])
+                    pass_path, pass_angle = laminate.make_pass(
+                        pass_coords=tape_coords, pass_angle=a)
+                    pass_paths.append(pass_path)
+                    pass_angles.append(pass_angle)
+    non_empty_index = [i for i, _ in enumerate(pass_paths) if _ != []]
+    pass_paths = [pass_paths[j] for j in non_empty_index]
+    pass_angles = [pass_angles[k] for k in non_empty_index]
+    laminate.create_undulations(pass_paths, pass_angles)
+    # laminate.object_plot()
+    return pass_paths, pass_angles, laminate.trim_to_specimen()
 
 
 if __name__ == '__main__':
@@ -98,30 +106,27 @@ if __name__ == '__main__':
     # (i.e. as long as this script is not imported). It plots the geometries
     # for testing purposes.
 
-    from object_plot import object_plot
-    # import matplotlib.pyplot as plt
-
     # define tape width and thickness
-    tape_angles = (0, 90)
-    tape_widths = (20,) * len(tape_angles)
-    tape_spacing = 1
+    tape_angles = (0, 45, 90, -45)
+    tape_widths = (10.0,) * len(tape_angles)
+    tape_spacing = 3
     cpt = 0.18
-    undulation_ratio = 0.18
-    rw = cpt / undulation_ratio
+    undulation_ratio = 0.09
+    rw = (cpt / undulation_ratio) / 2.0
+    specimen = Polygon(
+        [(-20.0, -50.0), (20.0, -50.0), (20.0, 50.0), (-20.0, 50.0)])
+    tape_paths, tape_angles, grid = laminate_creation(
+        tape_angles, tape_widths, tape_spacing, specimen,
+        undulation_width=rw)
 
-    x_min = y_min = -(tape_widths[0] / 2.0)
-    x_max = y_max = x_min + (tape_spacing + 1) * (tape_widths[0])
-    number_of_layers = len(tape_angles) * 2.0  # symmetric
-    laminate_thickness = number_of_layers * cpt
-    z_max = laminate_thickness / 2.0
-    z_min = -z_max
-    rve_polygon = Polygon([(x_min, y_min), (x_max, y_min),
-                           (x_max, y_max), (x_min, y_max)])
-
-    tape_paths, grid = laminate_creation(tape_angles, tape_widths,
-                                         tape_spacing, rve_polygon,
-                                         undulation_width=rw)
-
-    object_plot(grid, tape_angles, 'Tape', sample=rve_polygon)
-    object_plot(grid, tape_angles, 'Resin', sample=rve_polygon)
-    object_plot(grid, tape_angles, 'Undulation', sample=rve_polygon)
+    # # define tape width and thickness
+    # tape_angles = (0, 90)
+    # tape_widths = (10.0,) * len(tape_angles)
+    # tape_spacing = 3
+    # cpt = 0.18
+    # undulation_ratio = 0.09
+    # rw = (cpt / undulation_ratio) / 2.0
+    # specimen = Polygon(
+    #     [(-20.0, -50.0), (20.0, -50.0), (20.0, 50.0), (-20.0, 50.0)])
+    # tape_paths, tape_angles, grid = laminate_creation(
+    #     tape_angles, tape_widths, tape_spacing, specimen, undulation_width=rw)

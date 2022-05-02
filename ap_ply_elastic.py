@@ -21,7 +21,7 @@ USA
 
 import sys
 sys.path.append('C:\\Python27\\Lib\\site-packages')
-sys.path.append('C:\\Github\\interlaced_model_creation')
+sys.path.append('C:\\Github\\ap_ply_model_creation')
 from abaqus import *
 from abaqusConstants import *
 from caeModules import *

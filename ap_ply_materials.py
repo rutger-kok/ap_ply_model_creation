@@ -23,7 +23,7 @@ import sys
 # change these paths to point to your local Python installation package
 # libraries and the AP-PLY model creation library.
 sys.path.append('C:\\Python27\\Lib\\site-packages')
-sys.path.append('C:\\Github\\interlaced_model_creation')
+sys.path.append('C:\\Github\\ap_ply_model_creation')
 from abaqus import *
 from abaqusConstants import *
 import numpy as np

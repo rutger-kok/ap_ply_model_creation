@@ -1,31 +1,48 @@
 '''
-This module creates a 2D shell model, replicating a tensile test of an
-interlaced laminate. Geometry creation is handled by the interlaced_model
-module.
+This module is part of a library used to generate AP-PLY composite
+laminate geometries in Abaqus Explicit.
+Copyright (C) 2022  Rutger Kok
 
-(c) Rutger Kok, 25/11/2020
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301
+USA
 '''
+
+import sys
+# change these paths to point to your local Python installation package
+# libraries and the AP-PLY model creation library.
+sys.path.append('C:\\Python27\\Lib\\site-packages')
+sys.path.append('C:\\Github\\interlaced_model_creation')
+from shapely.geometry import Polygon
+from caeModules import *
 from abaqus import *
 from abaqusConstants import *
-import regionToolset
-from sys import path
-path.append('C:\\Python27\\Lib\\site-packages')
-path.append('C:\\GitHub\\interlaced_model_creation\\mesoscale')
-from shapely.geometry import Polygon
-from interlaced_2d import Interlaced2D
+from ap_ply_elastic import AP_PLY_Elastic
 
 
-class TensileModel(Interlaced2D):
+class AP_PLY_Tensile_2D(AP_PLY_Elastic):
     def __init__(self, model_name, dir_name=None):
-        Interlaced2D.__init__(self, model_name, dir_name)
+        AP_PLY_Elastic.__init__(self, model_name, dir_name)
 
     def set_test_parameters(self, time, test_speed, output_intervals,
-                            mesh_size):
+                            shell_mesh, symmetry_mode):
         '''Set test parameters'''
         self.time = time
         self.test_speed = test_speed
         self.output_intervals = output_intervals
-        self.mesh_size = mesh_size
+        self.shell_mesh = shell_mesh
+        self.symmetry_mode = symmetry_mode
 
     def apply_constraints(self, symmetric=False):
         '''
@@ -40,7 +57,7 @@ class TensileModel(Interlaced2D):
             None
         '''
         tol = 0.001
-        x, y = zip(*self.specimen_size.exterior.coords)
+        x, y = zip(*self.shell_region.exterior.coords)
         x_max = max(x)  # determine max x-value for offsets
         y_max = max(y)
         x_min = min(x)  # determine max x-value for offsets
@@ -115,6 +132,7 @@ if __name__ == '__main__':
     time = 5.0  # duration to simulate [ms]
     output_intervals = 50  # requested field output intervals
     crosshead_velocity = 0.5
+    symmetry_mode = 'BC'
 
     # Material parameters
     tape_angles = (0, 90)  # define angles of tapes
@@ -125,7 +143,7 @@ if __name__ == '__main__':
     number_of_plies = 4  # symmetric 8 ply laminate
 
     # Mesh sizes
-    mesh_size = 2.0
+    shell_mesh = 2.0
 
     # RVE dimensions
     x_min = -(tape_widths / 2.0)
@@ -136,16 +154,20 @@ if __name__ == '__main__':
                              (x_min, y_max)])
 
     # Create model
-    mdl = TensileModel('TestModel')
+    mdl = AP_PLY_Tensile_2D('TestModel')
     mdl.set_test_parameters(time, crosshead_velocity, output_intervals,
-                            mesh_size)
+                            shell_mesh, symmetry_mode)
     mdl.set_specimen_parameters(tape_angles, tape_widths, tape_spacing,
                                 cured_ply_thickness, undulation_ratio,
-                                number_of_plies)
+                                number_of_plies, x_shift=0.0, y_shift=0.0)
     mdl.create_materials()
     mdl.create_implicit_step()
-    paths_f, grid_f = mdl.create_tape_paths(specimen_size)
-    mdl.create_part(x_min, y_min, x_max, y_max, grid_f)
+    part = mdl.create_part_2d(specimen_size)
+    grid, lines = mdl.create_grid_elastic(specimen_size)
+    mdl.partition_part(part, lines, cells=False)
+    mdl.place_tows_elastic(grid, specimen_size)
+    mdl.assign_properties_2d(part, grid)
+    mdl.mesh_part_2d(part)
     mdl.apply_constraints()
     mdl.create_job()
     mdl.save_model()

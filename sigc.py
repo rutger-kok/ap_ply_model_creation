@@ -1,33 +1,38 @@
-''' 
-Interlaced Laminate Analysis: Shapely Interlaced Geometry Creation
-
-This script is used to define the geometry of interlaced laminates.
-Geometries are created using the Python Shapely library. The module is
-imported by the tape_placement module to create geometries in Abaqus.
-
-(c) Rutger Kok, 23/11/2020
 '''
+This module is part of a library used to generate AP-PLY composite
+laminate geometries in Abaqus Explicit.
+Copyright (C) 2022  Rutger Kok
+
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301
+USA
+'''
+
 from shapely.geometry import Polygon, Point, LineString
 from shapely.affinity import scale, rotate
 from shapely.ops import unary_union, polygonize
-from math import cos, radians, tan
+from math import cos, radians, tan, sin
 from collections import OrderedDict
-import pickle
-import os
 from itertools import groupby
 from random import uniform
 
-# initialize additional polygon attributes
-setattr(Polygon, 'angle', None)  # create attribute in Polygon class
-setattr(Polygon, 'object_type', None)
-setattr(Polygon, 'und_pairs', None)
 
-
-class Interlaced():
+class AP_PLY():
     def __init__(self, tape_angles, tape_widths, undulation_width=1.0,
-                 specimen=None):
+                 x_shift=0.0, y_shift=0.0, specimen=None):
         '''
-        Initializes an instance of an interlaced laminate.
+        Initializes an instance of an AP-PLY laminate.
 
         Args:
             tape_angles (tuple): Angles of the tapes/tows in the laminate.
@@ -35,7 +40,9 @@ class Interlaced():
             specimen (Shapely Polygon): Polygon defining the dimensions of
                 the specimen to be modeled.
             undulation_width (float): Width of "undulation regions" in the
-                interlaced laminate.
+                AP-PLY laminate.
+            x_shift (float): Shifts the AP-PLY architecture in the x-direction
+            y_shift (float): Shifts the AP-PLY architecture in the y-direction
 
         Returns:
             None
@@ -43,6 +50,8 @@ class Interlaced():
         self.t_angles = tape_angles
         self.t_widths = tape_widths
         self.u_width = undulation_width
+        self.x_shift = x_shift
+        self.y_shift = y_shift
         # define specimen boundaries
         if specimen is None:
             self.specimen = Polygon(
@@ -50,32 +59,21 @@ class Interlaced():
         else:
             self.specimen = specimen
         x, y = zip(*self.specimen.exterior.coords)
-        x_max = max(x)
-        x_min = min(x)
-        y_max = max(y)
-        y_min = min(y)
+        self.x_max = max(x)
+        self.x_min = min(x)
+        self.y_max = max(y)
+        self.y_min = min(y)
+        x_mid = (self.x_max + self.x_min) / 2.0
+        y_mid = (self.y_max + self.y_min) / 2.0
+        # define origin point (where pattern starts)
+        self.x_0 = x_mid + self.x_shift
+        self.y_0 = y_mid + self.y_shift
         # to ensure the objects on the edges of the specimen are properly
         # determined the specimen size must be increased initially, the excess
         # is later trimmed using the trim_to_specimen function.
-        self.specimen_buffered = self.specimen.buffer(2.5, join_style=2)
-
-        # create polygon grids
-        # name grid so that it can be saved to reduce future processing time
-        grid_name = '{}_{}_{}_{}'.format(
-            '-'.join(map(str, self.t_angles)),
-            self.t_widths[0],
-            self.u_width,
-            '-'.join(map(str, (x_min, y_min, x_max, y_max))))
-        # define grid storage directory
-        root = 'C:\\GitHub\\interlaced_model_creation\\mesoscale\\grids'
-        self.grid_path = '{}\\{}.p'.format(root, grid_name)
-        # if grid file exists load the file
-        if os.path.isfile(self.grid_path):
-            print 'Loading grid from file...'
-            self._grids = pickle.load(open(self.grid_path, "rb"))
-        else:  # if no grid file exists then call the gri creation function
-            print 'Creating grid...'
-            self._grids = self.create_grids()
+        self.specimen_buffered = self.specimen.buffer(
+            2.0 * self.u_width, join_style=2)
+        self._grids = self.create_grids()
 
     def create_grids(self):
         '''
@@ -90,59 +88,51 @@ class Interlaced():
             layer_grids (dict): a nested dictionary containing Polygon
                 objects and their IDs for each layer in the laminate.
         '''
-
         x, y = zip(*self.specimen_buffered.exterior.coords)
-        x_max = max(x)  # determine max x-value for offset
+        # NOTE: these max values are different from the self.x_min etc. values
+        x_max = max(x)
+        x_min = min(x)
         y_max = max(y)
+        y_min = min(y)
 
-        # define mirror point (used to mirror the Polygon boundaries)
-        mirror_point = Point([(0.0, 0.0), (0.0, 0.0)])
+        x_len = max(abs(self.x_0 - x_max), abs(self.x_0 - x_min))
+        y_len = max(abs(self.y_0 - y_max), abs(self.y_0 - y_min))
 
         tapes = zip(self.t_angles, self.t_widths)
         partition_lines = []
         for (a, w) in tapes:
-            if a == 90:
-                offset = w
-                max_offset = x_max - w / 2.0
-                number_offsets = int(max_offset / offset)
-                offset_list = [offset * k for k in range(number_offsets + 1)]
+            if a == 90 or a == -90.0:
+                n_offsets = int(x_len / w) + 1
+                offset_list = [w * k for k in range(-n_offsets, n_offsets)]
                 for ofs in offset_list:
-                    # tape/tow boundaries
-                    coords_1 = [((w / 2.0) - self.u_width + ofs, 300.0),
-                                ((w / 2.0) - self.u_width + ofs, -300.0)]
-                    # boundaries of undulation/resin regions
-                    coords_2 = [((w / 2.0) + ofs, 300.0),
-                                ((w / 2.0) + ofs, -300.0)]
-                    coords_3 = [((w / 2.0) + ofs + self.u_width, 300.0),
-                                ((w / 2.0) + ofs + self.u_width, -300.0)]
-                    line_1 = LineString(coords_1)
-                    line_2 = LineString(coords_2)
-                    line_3 = LineString(coords_3)
-                    partition_lines.extend([line_1, line_2, line_3])
-                reflected_lines = [scale(line, xfact=-1, origin=mirror_point)
-                                   for line in partition_lines]
-                partition_lines = partition_lines + reflected_lines
+                    x_1 = self.x_0 + (w / 2.0) - self.u_width + ofs
+                    x_2 = self.x_0 + (w / 2.0) + ofs
+                    x_3 = self.x_0 + (w / 2.0) + ofs + self.u_width
+                    for x_offset in [x_1, x_2, x_3]:
+                        coords = [(x_offset, y_max), (x_offset, y_min)]
+                        line = LineString(coords)
+                        try:
+                            line_trim = line.intersection(
+                                self.specimen_buffered)
+                            partition_lines.append(line_trim)
+                        except NotImplementedError:
+                            continue
             else:
-                offset = w / cos(radians(a))
-                max_offset = (y_max - (w / 2.0) * cos(radians(a))
-                              + x_max * tan(radians(a)))
-                number_offsets = int(max_offset / offset)
-                offset_list = [offset * k for k in range(number_offsets + 20)]
+                a_rad = radians(a)
+                offset = w / cos(a_rad)
+                max_offset = (y_len + abs(x_len * tan(a_rad)))
+                n_offsets = int(max_offset / offset) + 1
+                offset_list = [
+                    offset * k for k in range(-n_offsets, n_offsets)]
                 for ofs in offset_list:
-                    coords_1 = [(-300.0, (w / 2.0) - self.u_width + ofs),
-                                (300.0, (w / 2.0) - self.u_width + ofs)]
-                    coords_2 = [(-300.0, (w / 2.0) + ofs),
-                                (300.0, (w / 2.0) + ofs)]
-                    coords_3 = [(-300.0, (w / 2.0) + ofs + self.u_width),
-                                (300.0, (w / 2.0) + ofs + self.u_width)]
-                    rotation_point = Point([(0.0, ofs), (0.0, ofs)])
-                    line_1 = rotate(LineString(coords_1), a, rotation_point)
-                    line_2 = rotate(LineString(coords_2), a, rotation_point)
-                    line_3 = rotate(LineString(coords_3), a, rotation_point)
-                    partition_lines.extend([line_1, line_2, line_3])
-                reflected_lines = [rotate(line, 180.0, origin=mirror_point)
-                                   for line in partition_lines]
-                partition_lines = partition_lines + reflected_lines
+                    y_1 = self.y_0 + (w / 2.0) - self.u_width + ofs
+                    y_2 = self.y_0 + (w / 2.0) + ofs
+                    y_3 = self.y_0 + (w / 2.0) + ofs + self.u_width
+                    for y_offset in [y_1, y_2, y_3]:
+                        line = self.create_line(
+                            y_offset, a_rad, x_min, x_max, ofs)
+                        if line:
+                            partition_lines.append(line)
 
         # collection of individual linestrings for splitting in a list and add
         # the polygon lines to it.
@@ -158,13 +148,25 @@ class Interlaced():
         clean_dict = {
             idx: polygon for (idx, polygon) in polygon_dict.iteritems()
             if polygon.area > min_area}
-        # save the layer grids dictionary for faster run-times in the future
-        pickle.dump(clean_dict, open(self.grid_path, "wb"))
         return clean_dict
+
+    def create_line(self, y_offset, a_rad, x_min, x_max, offset):
+        y_delta = sin(a_rad) * (y_offset - (self.y_0 + offset))
+        x_neg = ((((x_min - self.x_0) + y_delta) / cos(a_rad)) + self.x_0)
+        x_pos = ((((x_max - self.x_0) + y_delta) / cos(a_rad)) + self.x_0)
+        coords = [(x_neg, y_offset), (x_pos, y_offset)]
+        line = rotate(
+            LineString(coords), a_rad, Point([self.x_0, self.y_0 + offset]),
+            use_radians=True)
+        try:
+            line_trim = line.intersection(self.specimen_buffered)
+            return line_trim
+        except NotImplementedError:
+            return None
 
     def make_pass(self, pass_angle=0, pass_coords=None):
         '''
-        Function used to place a single tape/tow of an interlaced laminate.
+        Function used to place a single tape/tow of an AP-PLY laminate.
         In other words, this assigns object types etc. to the Polygon objects
         in self._grids.
 
@@ -173,7 +175,7 @@ class Interlaced():
             pass_coords (tuple): Coordinates of the tape/tow to be placed.
                 NOTE: a tape/tow should be specified using its coordinates when
                 horizontal and then rotated. Do not rotate outside of the
-                Interlaced class
+                AP-PLY class
 
         Returns:
             None
@@ -181,21 +183,27 @@ class Interlaced():
         # set tape dimensions or use default
         if pass_coords is None:
             w = self.t_widths[0]
-            pass_coords = ([(-300.0, (w / 2) - self.u_width),
-                            (300.0, (w / 2) - self.u_width),
-                            (300.0, (-w / 2) + self.u_width),
-                            (-300.0, (-w / 2) + self.u_width)])
+            pass_coords = ([
+                (self.x_min, self.y_0 + (w / 2) - self.u_width),
+                (self.x_max, self.y_0 + (w / 2) - self.u_width),
+                (self.x_max, self.y_0 + (-w / 2) + self.u_width),
+                (self.x_min, self.y_0 + (-w / 2) + self.u_width)])
 
         # define tape boundaries
         tol = 1e-6  # tolerance for buffering
-        pass_bounds = Polygon(pass_coords)
+        pass_bounds = scale(Polygon(pass_coords), xfact=5.0)
         pass_rotated_bounds = rotate(
             pass_bounds, pass_angle).buffer(tol, join_style=2)
         # identify which Polygons from the create_grids function are within
         # the boundaries of the rotated tape
-        pass_path = [(obj_id, obj) for (obj_id, obj)
-                     in self._grids.iteritems()
-                     if obj.within(pass_rotated_bounds)]
+        if pass_rotated_bounds.buffer(self.u_width).intersects(self.specimen):
+            # self.test_plot([pass_rotated_bounds], ['#2169CF'])
+            pass_path = [(obj_id, obj) for (obj_id, obj)
+                         in self._grids.iteritems()
+                         if obj.within(pass_rotated_bounds)]
+        else:
+            return [], pass_angle
+
         if pass_path:
             for obj_id, _ in pass_path:
                 self.set_angle(self._grids[obj_id], pass_angle)
@@ -219,18 +227,21 @@ class Interlaced():
         Returns:
             None
         '''
-        tol = 1.0e-6
+        tol = 1.0e-2
         # create nested list of objects in pass_path by layer number
         merged_tape = unary_union(list(zip(*pass_path))[1])
         merged_tape_buff = merged_tape.buffer(
             self.u_width + tol, join_style=2)
-        search_area = merged_tape_buff.difference(merged_tape)
+        search_area = merged_tape_buff.difference(
+            merged_tape.buffer(-tol, join_style=2))
+        # self.test_plot([search_area, ], ['red', ])
         resin_regions = [(obj_id, obj) for (obj_id, obj)
                          in self._grids.iteritems()
                          if obj.within(search_area)]
-        for (obj_id, obj) in resin_regions:
+        for (obj_id, _) in resin_regions:
             self.set_angle(self._grids[obj_id], pass_angle)
             self.set_type(self._grids[obj_id], 'Resin')
+            # pass_path.append((obj_id, self._grids[obj_id]))
 
     def create_undulations(self, pass_paths, pass_angles):
         '''
@@ -272,18 +283,59 @@ class Interlaced():
                     self.u_width, join_style=2)
                 search_area = top_union_buff.intersection(bottom_union_buff)
                 search_area = search_area.buffer(tol, join_style=2)
+                # self.test_plot([top_union, bottom_union], ['blue', 'green'])
                 # check search area for the undulations
                 detected_undulations = []
                 if search_area:
-                    detected_undulations = [
-                        (obj_id, obj) for (obj_id, obj) in pass_path
-                        if obj.within(search_area)]
+                    for obj_id, obj in pass_path:
+                        if (obj.within(search_area)
+                            and (
+                                obj.within(top_union)
+                                or obj.within(bottom_union))):
+                                    detected_undulations.append((obj_id, obj))
                 # assign properties to undulations
                 for obj_id, obj in detected_undulations:
                     self.set_type(
                         self._grids[obj_id], 'Undulation', index=n)
                     self.set_type(
                         self._grids[obj_id], 'Undulation', index=n - 1)
+                    if obj.within(top_union):
+                        self.set_und_pairs(
+                            self._grids[obj_id], n, obj.angle[n])
+                        self.set_und_pairs(
+                            self._grids[obj_id], n - 1,
+                            (self._grids[obj_id].angle[n - 1], pass_angles[i]))
+                    elif obj.within(bottom_union):
+                        try:
+                            self.set_und_pairs(
+                                self._grids[obj_id], n,
+                                (obj.angle[n], pass_angles[i]))
+                            self.set_und_pairs(
+                                self._grids[obj_id], n - 1, obj.angle[n - 1])
+                        except:
+                            if obj.within(self.specimen):
+                                print obj.angle
+                            else:
+                                continue
+
+    def set_und_pairs(self, obj, index, angles):
+        '''
+        Function to set the angle attribute of Polygon instances.
+        Cannot setattr(Polygon, 'angle, set()) because sets are  mutable.
+        This would result in all the Polygons sharing the same angle attribute.
+        Instead initialize the angle attribute with None and then use set_angle
+        to either create a set with the first angle or add to the set if an
+        angle has already been assigned.
+
+        Args:
+            obj (Shapely Polygon): a Polygon object to which we assign an angle
+            angle (float): the angle to assign to the Polygon
+            insert (boolean): True if angle must be prepended rather than
+                appended to the list.
+        '''
+        if not hasattr(obj, 'und_pairs'):
+            setattr(obj, 'und_pairs', [None] * len(self.t_angles))
+        obj.und_pairs[index] = angles
 
     def set_angle(self, obj, angle, insert=False):
         '''
@@ -300,13 +352,13 @@ class Interlaced():
             insert (boolean): True if angle must be prepended rather than
                 appended to the list.
         '''
-        if obj.angle is None:
-            obj.angle = [angle, ]
-        else:
+        if hasattr(obj, 'angle'):
             if insert:
                 obj.angle.insert(0, angle)
             else:
                 obj.angle.append(angle)
+        else:
+            setattr(obj, 'angle', [angle, ])
 
     def set_type(self, obj, typ, index=None):
         '''
@@ -316,9 +368,7 @@ class Interlaced():
             insert (boolean): True if angle must be prepended rather than
                 appended to the list.
         '''
-        if obj.object_type is None:
-            obj.object_type = [typ, ]
-        else:
+        if hasattr(obj, 'object_type'):
             if index is None:
                 obj.object_type.append(typ)
             else:
@@ -326,6 +376,8 @@ class Interlaced():
                     obj.object_type[index] = typ
                 except IndexError:
                     pass
+        else:
+            setattr(obj, 'object_type', [typ, ])
 
     def trim_to_specimen(self):
         '''
@@ -347,32 +399,51 @@ class Interlaced():
                 continue
         return trimmed_grids
 
-    def object_plot(self):
+    def object_plot(self, plot_var='angle'):
         '''
-        Function to plot the contours of different Polygon types (Tape, Resin,
-        Undulation) for debugging of tape_placement, and sigc scripts.
+        Function to plot the contours of different Polygon types for debugging
+        of tape_placement, and sigc scripts.
         A different subplot is used for each layer in the laminate.
 
         Args:
-            grid (dict): nested dictionary containing Shapely Polygons
-            angles (list): angles in interlaced laminate
-            object_type (string): the type (e.g. Tape) of object to plot.
-            specimen (Shapely Polygon): the exterior dimensions of the specimen
-                which will be the exterior dimensions of the plot.
+            plot_var (string): specifies the variable used to sort the
+                plotted polygons.
 
         Returns:
             None
         '''
         from matplotlib.patches import Polygon as matplotlib_polygon
         import matplotlib.pyplot as plt
+
         grid = self.trim_to_specimen()
+        # define variable to plot
+        if plot_var == 'angle':
+            objects = [obj for obj in grid.values()
+                       if hasattr(obj, 'angle')]
+            sorted_objects = sorted(objects, key=lambda x: x.angle)
+            grouped_objects = groupby(
+                sorted_objects, key=lambda x: x.angle)
+        elif plot_var == 'und_pairs':
+            objects = [obj for obj in grid.values()
+                       if hasattr(obj, 'und_pairs')]
+            sorted_objects = sorted(objects, key=lambda x: x.und_pairs)
+            grouped_objects = groupby(
+                sorted_objects, key=lambda x: x.und_pairs)
+        elif plot_var == 'object_type':
+            objects = [obj for obj in grid.values()
+                       if hasattr(obj, 'object_type')]
+            sorted_objects = sorted(objects, key=lambda x: x.object_type)
+            grouped_objects = groupby(
+                sorted_objects, key=lambda x: x.object_type)
+        else:
+            print 'Not a valid variable'
+
         f1, axes = plt.subplots(1, 1)
-        sorted_objects = sorted(grid.values(), key=lambda x: x.angle[0])
         groups = {}
-        for key, group in groupby(sorted_objects, key=lambda x: x.angle[0]):
+        for key, group in grouped_objects:
             if key is None:
                 key = ['None', ]
-            groups[key] = list(group)
+            groups[tuple(key)] = list(group)
         for angle, objects in groups.iteritems():
             r = uniform(0, 1)
             g = uniform(0, 1)
@@ -385,18 +456,12 @@ class Interlaced():
                     label=angle)
                 axes.add_patch(patch)
         axes.autoscale()
-        axes.set_xlim(-50.0, 50.0)
-        axes.set_ylim(-75.0, 75.0)
         handles, labels = plt.gca().get_legend_handles_labels()
         by_label = OrderedDict(zip(labels, handles))
         plt.legend(by_label.values(), by_label.keys(), prop={'size': 6})
         plt.show(f1)
 
     def test_plot(self, geoms, colours):
-        # imports in function definition to avoid issues when importing the
-        # script in Abaqus
-        from matplotlib import pyplot
-        from matplotlib.patches import Polygon as matplotlib_polygon
         '''
         This function is a debugging tool. The function creates plots of the
         geometries passed to it as arguments, in the colours specified.
@@ -409,7 +474,12 @@ class Interlaced():
         Returns:
             None
         '''
-        fig = pyplot.figure(1)
+        # imports in function definition to avoid issues when importing the
+        # script in Abaqus
+        import matplotlib.pyplot as plt
+        from descartes import PolygonPatch
+
+        fig = plt.figure(1)
         ax = fig.add_subplot(111)
         # plot the geometries
         for i, g in enumerate(geoms):
@@ -417,96 +487,42 @@ class Interlaced():
                 if (g.geom_type == 'GeometryCollection' or
                     g.geom_type == 'MultiPolygon'):
                         for geom in g:
-                            vertices = geom.exterior.coords
-                            patch = matplotlib_polygon(
-                                vertices, closed=True, facecolor=colours[i],
-                                fill=True, alpha=0.5)
+                            patch = PolygonPatch(
+                                geom.buffer(0), alpha=0.5, ec='none',
+                                fc=colours[i])
                             ax.add_patch(patch)
                 else:
                     if g.exterior:
-                        vertices = g.exterior.coords
-                        patch = matplotlib_polygon(
-                            vertices, closed=True, facecolor=colours[i],
-                            fill=True, alpha=0.5)
+                        patch = PolygonPatch(
+                            g.buffer(0), alpha=0.5, ec='none', fc=colours[i])
                         ax.add_patch(patch)
         # plot the polygon grid
-        for (idx, poly) in self._grids.iteritems():
-            vertices = poly.exterior.coords
-            patch = matplotlib_polygon(
-                vertices, closed=True, edgecolor='black', fill=False)
+        for (idx, poly) in self.trim_to_specimen().iteritems():
+            patch = PolygonPatch(poly.buffer(0), ec='black', fc='none')
             ax.add_patch(patch)
         ax.autoscale()
-        pyplot.show()
+        ax.set_aspect('equal')
+        plt.savefig('test.svg', format='svg')
+        plt.show()
 
 
 if __name__ == '__main__':
-
-    # uw = 1.0
-    # w = 10.0
-    # tape_angles = (0, 45, 90, -45)
-    # tape_widths = (w, ) * len(tape_angles)
-    # # initialize laminate
-    # interlacedLaminate = Interlaced(
-    #     tape_angles, tape_widths, undulation_width=uw)
-    # path1, angle1 = interlacedLaminate.make_pass(pass_angle=0)
-    # path2, angle2 = interlacedLaminate.make_pass(pass_angle=45)
-    # path3, angle3 = interlacedLaminate.make_pass(pass_angle=90)
-    # path4, angle4 = interlacedLaminate.make_pass(pass_angle=-45)
-    # # crds1 = ([(-300.0, (w / 2) - uw - w), (300.0, (w / 2) - uw - w),
-    # #           (300.0, (-w / 2) + uw - w), (-300.0, (-w / 2) + uw - w)])
-    # # path5, angle5 = interlacedLaminate.make_pass(
-    # #     pass_angle=0, pass_coords=crds1)
-    # # crds2 = ([(-300.0, (w / 2) - uw - 2 * w), (300.0, (w / 2) - uw - 2 * w),
-    # #           (300.0, (-w / 2) + uw - 2 * w),
-    # #           (-300.0, (-w / 2) + uw - 2 * w)])
-    # # path6, angle6 = interlacedLaminate.make_pass(
-    # #     pass_angle=0, pass_coords=crds2)
-    # paths = [path1, path2, path3, path4]  # , path5, path6]
-    # angles = [angle1, angle2, angle3, angle4]  # , angle5, angle6]
-    # paths = interlacedLaminate.create_undulations(paths, angles)
-    # grid = interlacedLaminate.trim_to_specimen()
-    # interlacedLaminate.object_plot()
-
-    # uw = 1.0
-    # w = 10.0
-    # tape_angles = (0, 60, -60)
-    # tape_widths = (w, ) * len(tape_angles)
-    # # initialize laminate
-    # interlacedLaminate = Interlaced(
-    #     tape_angles, tape_widths, undulation_width=uw)
-    # path1, angle1 = interlacedLaminate.make_pass(pass_angle=0)
-    # path2, angle2 = interlacedLaminate.make_pass(pass_angle=60)
-    # path3, angle3 = interlacedLaminate.make_pass(pass_angle=-60)
-    # # crds1 = ([(-300.0, (w / 2) - uw - w), (300.0, (w / 2) - uw - w),
-    # #           (300.0, (-w / 2) + uw - w), (-300.0, (-w / 2) + uw - w)])
-    # path4, angle4 = interlacedLaminate.make_pass(
-    #     pass_angle=0, pass_coords=crds1)
-    # paths = [path1, path2, path3]#, path4]
-    # angles = [angle1, angle2, angle3]#, angle4]
-    # paths = interlacedLaminate.create_undulations(paths, angles)
-    # interlacedLaminate.object_plot()
-
+    # Purely to test the sigc script
     uw = 1.0
     w = 10.0
-    tape_angles = (0, 90)
+    tape_angles = (0, 45, 90, -45)
     tape_widths = (w, ) * len(tape_angles)
+    x_ext = 29.0
+    y_ext = 29.0
     specimen = Polygon(
-        [(-20.0, -50.0), (20.0, -50.0), (20.0, 50.0), (-20.0, 50.0)])
+        [(0.0, 0.0), (x_ext, 0.0), (x_ext, y_ext), (0.0, y_ext), (0.0, 0.0)])
     # initialize laminate
-    interlacedLaminate = Interlaced(
-        tape_angles, tape_widths, undulation_width=uw, specimen=specimen)
-    path1, angle1 = interlacedLaminate.make_pass(pass_angle=0)
-    crds1 = ([(-300.0, (w / 2) - uw - 2 * w), (300.0, (w / 2) - uw - 2 * w),
-              (300.0, (-w / 2) + uw - 2 * w),
-              (-300.0, (-w / 2) + uw - 2 * w)])
-    path2, angle2 = interlacedLaminate.make_pass(
-        pass_angle=0, pass_coords=crds1)
-    crds2 = ([(-300.0, (w / 2) - uw - w), (300.0, (w / 2) - uw - w),
-             (300.0, (-w / 2) + uw - w), (-300.0, (-w / 2) + uw - w)])
-    path3, angle3, id3 = interlacedLaminate.make_pass(
-        pass_angle=0, pass_coords=crds2)
-    path4, angle4 = interlacedLaminate.make_pass(pass_angle=90)
-    paths = [path1, path4]
-    angles = [angle1, angle4]
-    interlacedLaminate.create_undulations(paths, angles)
-    interlacedLaminate.object_plot()
+    ap_ply_laminate = AP_PLY(
+        tape_angles, tape_widths, undulation_width=uw, x_shift=0.0,
+        y_shift=0.0, specimen=specimen)
+    path1, angle1 = ap_ply_laminate.make_pass(pass_angle=45)
+    path2, angle2 = ap_ply_laminate.make_pass(pass_angle=-45)
+    paths = [path1, path2]
+    angles = [angle1, angle2]
+    ap_ply_laminate.create_undulations(paths, angles)
+    ap_ply_laminate.object_plot()
